@@ -77,3 +77,22 @@ def load_config(config_path: str) -> Config:
         raise e
 
     return config
+
+
+# --- Load configuration instance ---
+# Assuming config.yaml is in the project root relative to where the app runs
+# A more robust approach might involve searching relative to the script location
+DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "config.yaml"
+settings: Config | None = None
+
+try:
+    settings = load_config(str(DEFAULT_CONFIG_PATH))
+except (FileNotFoundError, yaml.YAMLError, ValidationError) as e:
+    # Handle cases where config might be missing or invalid during import
+    # In a real app, you might want to raise a critical error or use default fallbacks
+    # For now, just log and set settings to None, tests might need mocking.
+    import logging # Local import to avoid circular dependency if logging uses config
+    logger = logging.getLogger(__name__)
+    logger.error(f"Failed to load configuration from {DEFAULT_CONFIG_PATH}: {e}")
+    # Optionally raise a custom exception if config is absolutely required
+    # raise ImportError(f"Could not load mandatory configuration: {e}") from e
