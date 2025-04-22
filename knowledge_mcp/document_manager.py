@@ -1,9 +1,10 @@
 """Handles document loading, processing, and ingestion into knowledge bases."""
-
+import asyncio
 import logging
 from pathlib import Path
 import textract 
 from knowledge_mcp.rag_manager import RAGManager 
+from knowledge_mcp.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +20,15 @@ class TextExtractionError(DocumentManagerError):
 class UnsupportedFileTypeError(DocumentManagerError):
     """Raised when the document file type is not supported."""
 
+class DocumentProcessingError(Exception):
+    """Custom exception for errors during document processing."""
 
 class DocumentManager:
     """Processes and ingests documents into a specified knowledge base."""
 
-    def __init__(self, rag_manager: RAGManager): 
+    def __init__(self, config: Config, rag_manager: RAGManager): 
         """Initializes the DocumentManager."""
+        self.config = config
         self.rag_manager = rag_manager
         logger.info("DocumentManager initialized.")
 
@@ -60,8 +64,8 @@ class DocumentManager:
             logger.exception(msg) # Log with stack trace
             raise TextExtractionError(msg) from e
 
-    async def process_document(self, doc_path: Path, kb_name: str) -> None: 
-        """Loads, processes, and ingests a single document into the specified KB.
+    def add(self, doc_path: Path, kb_name: str) -> None: 
+        """Ingests a document into the specified knowledge base.
 
         Args:
             doc_path: The path to the document file.
@@ -72,14 +76,14 @@ class DocumentManager:
             TextExtractionError: If text extraction fails.
             Exception: For errors during RAG instantiation or ingestion.
         """
-        logger.info(f"Starting processing for document: {doc_path} into KB: {kb_name}")
+        logger.info(f"Inserting document: {doc_path} into KB: {kb_name}")
 
         if not doc_path.is_file(): 
             msg = f"Document not found or is not a file: {doc_path}"
             logger.error(msg)
             raise FileNotFoundError(msg)
 
-        rag_instance = await self.rag_manager.get_rag_instance(kb_name)
+        rag = asyncio.run(self.rag_manager.get_rag_instance(kb_name))
         text_content = self._extract_text(doc_path)
         
 
@@ -95,7 +99,7 @@ class DocumentManager:
                         f"Skipping ingestion for {doc_path.name}: Extracted content is empty or whitespace only."
                     )
                     return # Skip ingestion for empty content
-                await rag_instance.insert(
+                rag.insert(
                     input=text_content, # Assuming add expects a list of documents
                     ids=doc_path.name, # Provide a unique ID, using resolved path string
                     file_paths=doc_path.name
@@ -112,47 +116,3 @@ class DocumentManager:
         logger.info(f"Finished processing for document: {doc_path}")
 
     # Placeholder for other potential helper methods
-
-# Example usage needs to be async now
-# import asyncio
-# from knowledge_mcp.config import settings 
-# from knowledge_mcp.kb_manager import KnowledgeBaseManager
-# from knowledge_mcp.rag_manager import RAGManager 
-# from knowledge_mcp.kb_manager import KnowledgeBaseExistsError 
-
-# async def main():
-#     logging.basicConfig(level=logging.INFO)
-#     if not settings:
-#          print("Settings not loaded, exiting.")
-#          return
-#     # Ensure base KB dir exists if not already handled by RAGManager/KBManager init
-#     settings.knowledge_base.base_dir.mkdir(parents=True, exist_ok=True)
-#     kb_manager = KnowledgeBaseManager(settings.knowledge_base.base_dir)
-#     rag_manager = RAGManager(settings)
-#     manager = DocumentManager(rag_manager)
-
-#     kb_name = "my_test_kb"
-#     # Adjust path to a real document you have for testing
-#     doc = Path("README.md") 
-
-#     try:
-#         # Ensure KB exists
-#         kb_manager.create_kb(kb_name) 
-#         print(f"KB '{kb_name}' created.")
-#     except KnowledgeBaseExistsError:
-#          print(f"KB '{kb_name}' already exists.")
-#     except Exception as e:
-#          print(f"Failed to create KB: {e}")
-#          return
-
-#     if doc.exists():
-#         try:
-#             await manager.process_document(doc, kb_name)
-#             print(f"Processing complete for {doc}.")
-#         except Exception as e:
-#             print(f"Error processing document {doc}: {e}")
-#     else:
-#         print(f"Document not found: {doc}")
-
-# if __name__ == "__main__":
-#     asyncio.run(main())

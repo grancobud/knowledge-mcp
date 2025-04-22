@@ -53,7 +53,7 @@ async def test_process_document_success(document_manager, mock_rag_manager, mock
     # Patch textract.process within the test scope
     with patch("knowledge_mcp.document_manager.textract.process", return_value=doc_content.encode('utf-8')) as mock_textract:
         # Act
-        await document_manager.process_document(doc_path, kb_name)
+        await document_manager.add(doc_path, kb_name)
 
         # Assert
         mock_rag_manager.get_rag_instance.assert_awaited_once_with(kb_name)
@@ -74,7 +74,7 @@ async def test_process_document_file_not_found(document_manager):
 
     # Act & Assert
     with pytest.raises(FileNotFoundError):
-        await document_manager.process_document(non_existent_path, kb_name)
+        await document_manager.add(non_existent_path, kb_name)
 
 async def test_process_document_text_extraction_error(document_manager, mock_rag_manager, tmp_path):
     """Test handling of errors during text extraction."""
@@ -92,7 +92,7 @@ async def test_process_document_text_extraction_error(document_manager, mock_rag
 
         # Act & Assert
         with pytest.raises(TextExtractionError) as excinfo:
-            await document_manager.process_document(doc_path, kb_name)
+            await document_manager.add(doc_path, kb_name)
 
         assert "Failed to extract text" in str(excinfo.value)
         assert excinfo.value.__cause__ is extraction_exception # Check the cause
@@ -113,7 +113,7 @@ async def test_process_document_rag_init_error(document_manager, mock_rag_manage
 
     # Act & Assert
     with pytest.raises(RAGInitializationError) as excinfo:
-         await document_manager.process_document(doc_path, kb_name)
+         await document_manager.add(doc_path, kb_name)
 
     assert excinfo.value is init_exception # Should be the exact exception raised
     mock_rag_manager.get_rag_instance.assert_awaited_once_with(kb_name)
@@ -134,7 +134,7 @@ async def test_process_document_ingestion_error(document_manager, mock_rag_manag
     with patch("knowledge_mcp.document_manager.textract.process", return_value=doc_content.encode('utf-8')) as mock_textract:
         # Act & Assert
         with pytest.raises(DocumentManagerError) as excinfo:
-            await document_manager.process_document(doc_path, kb_name)
+            await document_manager.add(doc_path, kb_name)
 
         assert "Failed to ingest document" in str(excinfo.value)
         assert excinfo.value.__cause__ is ingestion_exception
@@ -157,7 +157,7 @@ async def test_process_document_empty_content(document_manager, mock_rag_manager
     with patch("knowledge_mcp.document_manager.textract.process", return_value=doc_content_empty.encode('utf-8')) as mock_textract:
         # Act
         # Should complete without raising ingestion error
-        await document_manager.process_document(doc_path, kb_name)
+        await document_manager.add(doc_path, kb_name)
 
         # Assert
         mock_rag_manager.get_rag_instance.assert_awaited_once_with(kb_name)

@@ -125,7 +125,7 @@ knowledge-mcp/
 │   ├── cli.py                # CLI implementation
 │   ├── config.py             # Configuration handling
 │   ├── kb_manager.py         # Knowledge base management
-│   ├── document_processor.py # Document processing and embedding
+│   ├── document_manager.py   # Document processing and embedding
 │   ├── search.py             # Search functionality
 │   ├── mcp_server.py         # MCP server implementation
 │   └── utils.py              # Utility functions

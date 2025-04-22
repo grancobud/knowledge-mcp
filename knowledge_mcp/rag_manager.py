@@ -12,6 +12,7 @@ from lightrag import LightRAG
 from lightrag.llm.openai import openai_complete, openai_embed
 
 from knowledge_mcp.config import Config
+from lightrag.kg.shared_storage import initialize_pipeline_status
 
 logger = logging.getLogger(__name__)
 
@@ -125,12 +126,10 @@ class RAGManager:
                 llm_kwargs["base_url"] = llm_config.base_url
             # Add max_tokens if present in config - USE THE CORRECT ARGUMENT NAME for LightRAG
             llm_model_max_tokens = getattr(llm_config, 'max_tokens', None)
-
+            print("llm_model_max_tokens", llm_model_max_tokens)
             logger.debug(
                 f"Attempting to initialize LightRAG for {kb_name} with parameters:\n"
                 f"  working_dir: {kb_path}\n"
-                f"  embedding_func: {openai_embed.__name__}\n"
-                f"  llm_model_func: {openai_complete.__name__}\n"
                 f"  llm_model_kwargs: {llm_kwargs}\n"
                 f"  llm_model_name: {llm_config.model_name}\n"
                 f"  llm_model_max_token_size: {llm_model_max_tokens}"
@@ -151,6 +150,7 @@ class RAGManager:
             # --- Initialize Storages ---
             logger.debug(f"Initializing LightRAG storages for {kb_name}...")
             await rag.initialize_storages()
+            await initialize_pipeline_status()
             logger.info(f"Successfully initialized LightRAG instance for KB: {kb_name}")
 
             self._rag_instances[kb_name] = rag
