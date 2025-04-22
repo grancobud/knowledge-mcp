@@ -13,6 +13,7 @@ language_model:
   base_url: null # Optional
   model_name: gpt-4o # Example OpenAI model
   api_key: ${OPENAI_API_KEY} # Use the same or a different env var
+  max_tokens: 32768 # Optional: Set max tokens for the model
 
 logging:
   level: INFO # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
