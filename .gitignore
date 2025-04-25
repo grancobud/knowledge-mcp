@@ -3,6 +3,7 @@
 .pytest_cache
 .benchmarks
 __pycache__
+kbs/
 
 
 # Added by Claude Task Master

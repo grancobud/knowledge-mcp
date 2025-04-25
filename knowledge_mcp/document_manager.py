@@ -1,10 +1,8 @@
 """Handles document loading, processing, and ingestion into knowledge bases."""
-import asyncio
 import logging
 from pathlib import Path
 import textract 
 from knowledge_mcp.rag_manager import RAGManager 
-from knowledge_mcp.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +24,8 @@ class DocumentProcessingError(Exception):
 class DocumentManager:
     """Processes and ingests documents into a specified knowledge base."""
 
-    def __init__(self, config: Config, rag_manager: RAGManager): 
+    def __init__(self, rag_manager: RAGManager): 
         """Initializes the DocumentManager."""
-        self.config = config
         self.rag_manager = rag_manager
         logger.info("DocumentManager initialized.")
 
@@ -64,7 +61,7 @@ class DocumentManager:
             logger.exception(msg) # Log with stack trace
             raise TextExtractionError(msg) from e
 
-    def add(self, doc_path: Path, kb_name: str) -> None: 
+    async def add(self, doc_path: Path, kb_name: str) -> None: 
         """Ingests a document into the specified knowledge base.
 
         Args:
@@ -83,7 +80,13 @@ class DocumentManager:
             logger.error(msg)
             raise FileNotFoundError(msg)
 
-        rag = asyncio.run(self.rag_manager.get_rag_instance(kb_name))
+        try:
+            rag = await self.rag_manager.get_rag_instance(kb_name)
+        except Exception as e:
+            msg = f"Failed to get RAG instance for KB '{kb_name}': {e}"
+            logger.exception(msg)
+            raise DocumentManagerError(msg) from e
+
         text_content = self._extract_text(doc_path)
         
 
@@ -99,7 +102,7 @@ class DocumentManager:
                         f"Skipping ingestion for {doc_path.name}: Extracted content is empty or whitespace only."
                     )
                     return # Skip ingestion for empty content
-                rag.insert(
+                await rag.insert(
                     input=text_content, # Assuming add expects a list of documents
                     ids=doc_path.name, # Provide a unique ID, using resolved path string
                     file_paths=doc_path.name

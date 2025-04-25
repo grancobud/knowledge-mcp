@@ -112,11 +112,16 @@ async def test_process_document_rag_init_error(document_manager, mock_rag_manage
     mock_rag_manager.get_rag_instance.side_effect = init_exception
 
     # Act & Assert
-    with pytest.raises(RAGInitializationError) as excinfo:
-         await document_manager.add(doc_path, kb_name)
+    # Expect the wrapped error, not the original one
+    with pytest.raises(DocumentManagerError) as excinfo:
+        await document_manager.add(doc_path, kb_name)
 
-    assert excinfo.value is init_exception # Should be the exact exception raised
+    # Optionally check the error message or the wrapped cause
+    assert kb_name in str(excinfo.value)
+    assert isinstance(excinfo.value.__cause__, RAGInitializationError)
+
     mock_rag_manager.get_rag_instance.assert_awaited_once_with(kb_name)
+
 
 async def test_process_document_ingestion_error(document_manager, mock_rag_manager, mock_lightrag_instance, tmp_path):
     """Test handling of errors during document ingestion (rag.insert)."""

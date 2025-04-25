@@ -3,15 +3,10 @@
 
 import logging
 from pathlib import Path
-
-# Assuming LightRAG is installed and follows this structure
-# Adjust imports based on actual LightRAG library structure if different
 from lightrag import LightRAG
-# TODO: Import specific model functions/clients dynamically or adjust mapping based on refined needs
-# Example placeholder imports, assuming they exist directly in lightrag
 from lightrag.llm.openai import openai_complete, openai_embed
 
-from knowledge_mcp.config import Config
+from knowledge_mcp.config import ConfigService
 from lightrag.kg.shared_storage import initialize_pipeline_status
 
 logger = logging.getLogger(__name__)
@@ -50,11 +45,10 @@ class RAGInitializationError(RAGManagerError):
 class RAGManager:
     """Creates, manages, and caches LightRAG instances per knowledge base."""
 
-    def __init__(self, config: Config):
+    def __init__(self):
         """Initializes the RAGManager with application config."""
-        self.config = config
         self._rag_instances: dict[str, LightRAG] = {}
-        self._kb_base_dir = Path(config.knowledge_base.base_dir) # Ensure it's a Path
+        self._kb_base_dir = Path(ConfigService.get_instance().knowledge_base.base_dir) # Ensure it's a Path
         logger.info(f"RAGManager initialized with KB base directory: {self._kb_base_dir}")
 
     async def get_rag_instance(self, kb_name: str) -> LightRAG:
