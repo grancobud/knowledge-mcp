@@ -7,10 +7,10 @@ import uvicorn  # Keep for potential future server use # noqa: F401
 import time     # Keep for placeholder serve mode
 
 # Updated relative imports
-from knowledge_mcp.config import Config, load_and_validate_config
-from knowledge_mcp.knowledgebases import KnowledgeBaseManager # Updated module name
-from knowledge_mcp.rag import RagManager # Updated module name
-from knowledge_mcp.shell import Shell # Updated module and class name
+from .config import Config, load_and_validate_config
+from .knowledgebases import KnowledgeBaseManager # Updated module name
+from .rag import RagManager # Updated module name
+from .shell import Shell # Updated module and class name
 
 # Configure basic logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -117,3 +117,12 @@ if __name__ == "__main__":
     # This allows running the cli directly for development,
     # but entry point script is preferred for installation.
     main()
+
+    # --- Error Handling ---
+    def default(self, line: str):
+        """Called on an unknown command."""
+        print(f"Unknown command: {line}. Type 'help' for available commands.")
+
+    def emptyline(self):
+        """Called when an empty line is entered. Does nothing."""
+        pass

@@ -2,11 +2,14 @@
 Configuration parsing with YAML support and environment variable substitution.
 """
 from pathlib import Path
-import os
 import yaml
 from pydantic import BaseModel, Field, ValidationError
-from typing import Optional, Type, TypeVar
+from typing import Optional
+import os
+import logging
+from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
 
 class KnowledgeBaseConfig(BaseModel):
     base_dir: Path = Field(..., description="Base directory for knowledge base storage")
@@ -39,137 +42,68 @@ class Config(BaseModel):
     logging: LoggingConfig
 
 
-def _load_and_validate_config(config_path: str) -> Config:
+# --- Config Loading Function ---
+def load_and_validate_config(config_path: str | Path) -> Config:
     """
-    Internal function to load YAML, substitute env vars, and validate with Pydantic.
+    Loads YAML config, substitutes env vars, and validates with Pydantic.
+
+    Args:
+        config_path: Path to the configuration file.
+
+    Returns:
+        A validated Config object.
+
+    Raises:
+        FileNotFoundError: If the config file doesn't exist.
+        ValueError: If YAML is invalid, validation fails, or structure is wrong.
+        RuntimeError: For other unexpected errors during loading.
     """
     config_file = Path(config_path)
     if not config_file.is_file():
         raise FileNotFoundError(f"Config file not found or is not a file: {config_path}")
 
-    print(f"Reading config from: {config_file.resolve()}")
+    logger.info(f"Reading config from: {config_file.resolve()}")
     raw = config_file.read_text()
-    
+
+    # Substitute environment variables (e.g., ${API_KEY})
     substituted_raw = raw
     for key, value in os.environ.items():
         placeholder = f"${{{key}}}"
         if placeholder in substituted_raw:
-            print(f"Substituting {placeholder}...")
+            logger.debug(f"Substituting {placeholder} from environment variable.")
             substituted_raw = substituted_raw.replace(placeholder, value)
 
     try:
         config_dict = yaml.safe_load(substituted_raw)
-    except yaml.YAMLError as e:
-        print(f"Error parsing YAML file {config_path}: {e}")
-        raise yaml.YAMLError(f"Error parsing YAML file {config_path}: {e}") from e
+        if not isinstance(config_dict, dict):
+            raise ValueError(f"Invalid YAML format in {config_path}: Expected a dictionary, got {type(config_dict)}")
 
-    if not isinstance(config_dict, dict):
-        print(f"Invalid YAML format in {config_path}: Expected a dictionary, got {type(config_dict)}")
-        raise yaml.YAMLError(f"Invalid YAML format in {config_path}: Expected a dictionary.")
-
-    try:
         validated_config = Config.model_validate(config_dict)
-        print("Config validation successful.")
+        logger.info("Configuration loaded and validated successfully.")
+
+        # Load environment variables from env_file
+        if config_dict["env_file"]:
+            env_file = Path(config_dict["env_file"])
+            if not env_file.is_file():
+                raise FileNotFoundError(f"Environment file not found or is not a file: {env_file}")
+            logger.info(f"Loading environment variables from: {env_file.resolve()}")
+            load_dotenv(dotenv_path=env_file)
+            logger.info("Environment variables loaded successfully.")
+
+        return validated_config
+    except yaml.YAMLError as e:
+        logger.exception(f"Error parsing YAML config file: {config_path}")
+        raise ValueError(f"Invalid YAML format in {config_path}: {e}") from e
     except ValidationError as e:
-        print(f"Configuration validation failed for {config_path}:\n{e}")
-        raise e
-
-    return validated_config
-
-
-TConfigService = TypeVar('TConfigService', bound='ConfigService')
-
-
-class ConfigService:
-    """Singleton service to load and provide access to the validated Config object."""
-    _instance: Optional[TConfigService] = None
-    _config_data: Optional[Config] = None
-    _config_path: Optional[Path] = None
-    _initialized: bool = False
-
-    def __new__(cls: Type[TConfigService], config_path: str = "config.yaml") -> TConfigService:
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialize(config_path)
-        elif not cls._initialized:
-             print("ConfigService: Re-initializing potentially failed instance reference...")
-             cls._instance._initialize(config_path)
-        elif Path(config_path).resolve() != cls._config_path:
-             print(f"ConfigService INFO: Instance already initialized with {cls._config_path}. "
-                   f"Ignoring new path {config_path}.")
-
-        return cls._instance
-
-    def _initialize(self, config_path: str):
-        """Internal method to load config data, called only once per instance lifetime."""
-        if self._initialized:
-            return
-
-        print(f"ConfigService: Initializing with config path: {config_path}")
-        try:
-            absolute_path = Path(config_path).resolve()
-            self._config_data = _load_and_validate_config(str(absolute_path))
-            self._config_path = absolute_path
-            self._initialized = True
-            print(f"ConfigService: Configuration loaded successfully from {self._config_path}")
-        except (FileNotFoundError, yaml.YAMLError, ValidationError) as e:
-            print(f"ConfigService: FATAL - Failed to load or validate configuration from '{config_path}': {e}")
-            self._config_data = None
-            self._initialized = False 
-            self._config_path = None
-            raise RuntimeError(f"Failed to initialize ConfigService: {e}") from e
-        except Exception as e:
-            print(f"ConfigService: FATAL - An unexpected error occurred during initialization: {e}")
-            self._config_data = None
-            self._initialized = False
-            self._config_path = None
-            raise RuntimeError(f"Unexpected error during ConfigService initialization: {e}") from e
+        logger.exception(f"Configuration validation failed for {config_path}")
+        error_details = '\n'.join([f"  - {'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()])
+        raise ValueError(f"Invalid configuration in {config_path}:\n{error_details}") from e
+    except Exception as e:
+        logger.exception(f"An unexpected error occurred loading config {config_path}")
+        raise RuntimeError(f"Failed to load config {config_path}: {e}") from e
 
 
-    @classmethod
-    def get_instance(cls: Type[TConfigService], config_path: str = "config.yaml") -> TConfigService:
-        """Gets the singleton instance of the ConfigService.
-
-        Args:
-            config_path: Path to the config file. Used ONLY on the first call
-                         to create the instance. Subsequent calls ignore this.
-
-        Returns:
-            The singleton ConfigService instance.
-        
-        Raises:
-            RuntimeError: If configuration loading fails during the first initialization.
-        """
-        return cls(config_path)
-
-    def get_config_data(self) -> Config:
-        """Returns the loaded and validated Pydantic Config object."""
-        if not self._initialized or self._config_data is None:
-            raise RuntimeError("ConfigService is not initialized. Configuration may have failed to load.")
-        return self._config_data
-
-    @property
-    def knowledge_base(self) -> KnowledgeBaseConfig:
-        return self.get_config_data().knowledge_base
-
-    @property
-    def embedding_model(self) -> EmbeddingModelConfig:
-        return self.get_config_data().embedding_model
-
-    @property
-    def language_model(self) -> LanguageModelConfig:
-        return self.get_config_data().language_model
-
-    @property
-    def logging(self) -> LoggingConfig:
-        return self.get_config_data().logging
-
-    @property
-    def config_file_path(self) -> Optional[Path]:
-        """Returns the absolute path of the configuration file successfully used."""
-        return self._config_path
-
-
+# Example Usage (Optional, for testing the module directly)
 if __name__ == "__main__":
     example_config_path = Path("config.yaml")
     if not example_config_path.exists():
@@ -195,28 +129,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error creating dummy config: {e}")
 
-    try:
-        config_service1 = ConfigService.get_instance()
-        print(f"Instance 1 Config Path: {config_service1.config_file_path}")
-
-        loaded_config = config_service1.get_config_data()
-        print(f"KB Base Dir (method): {loaded_config.knowledge_base.base_dir}")
-        print(f"LLM Provider (method): {loaded_config.language_model.provider}")
-
-        print(f"KB Base Dir (prop): {config_service1.knowledge_base.base_dir}")
-        print(f"LLM Provider (prop): {config_service1.language_model.provider}")
-        print(f"Logging Level (prop): {config_service1.logging.level}")
-
-        config_service2 = ConfigService.get_instance("non_existent_config.yaml") 
-        print(f"Instance 1 == Instance 2: {config_service1 is config_service2}")
-        print(f"Instance 2 Config Path (still): {config_service2.config_file_path}")
-
-        api_key = config_service1.embedding_model.api_key
-        print(f"Embedding API Key: {api_key}") 
-
-    except RuntimeError as e:
-        print(f"\n--- RUNTIME ERROR DURING EXAMPLE USAGE --- ")
-        print(f"Error: {e}")
-    except Exception as e:
-        print(f"\n--- UNEXPECTED ERROR DURING EXAMPLE USAGE --- ")
-        print(f"Error: {e}")
+    print("Config structure defined. Loading/testing moved to main.py or caller.")

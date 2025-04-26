@@ -1,0 +1,27 @@
+knowledge_base:
+  base_dir: ./kbs
+
+lightrag:
+  llm:
+    provider: "openai"
+    model_name: "gpt-4o-mini"
+    max_token_size: 32768
+    api_key: "${OPENAI_API_KEY}"
+    api_base: "${OPENAI_API_BASE}"
+    kwargs:
+      temperature: 0.0
+      top_p: 0.9
+  embedding:
+    provider: "openai"
+    model_name: "text-embedding-3-small"
+    api_key: "${OPENAI_API_KEY}"
+    api_base: "${OPENAI_API_BASE}"
+    embedding_dim: 1536
+    max_token_size: 8192
+  embedding_cache:
+    enabled: true
+    similarity_threshold: 0.90
+
+env_file: .env
+
+# add foo kbs/CD09000-10.pdf
