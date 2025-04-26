@@ -94,16 +94,15 @@ class Shell(cmd.Cmd):
     # --- Document Management Commands ---
 
     def do_add(self, arg: str):
-        """Add a document to a knowledge base. Usage: add <kb_name> <file_path> [doc_id]"""
+        """Add a document to a knowledge base. Usage: add <kb_name> <file_path>"""
         try:
             args = shlex.split(arg)
             if not 2 <= len(args) <= 3:
-                print("Usage: add <kb_name> <file_path> [doc_id]")
+                print("Usage: add <kb_name> <file_path>")
                 return
 
             kb_name = args[0]
             file_path_str = args[1]
-            doc_id = args[2] if len(args) == 3 else None
 
             file_path = Path(file_path_str)
             if not file_path.is_file():
@@ -117,7 +116,7 @@ class Shell(cmd.Cmd):
         except KnowledgeBaseNotFoundError:
             print(f"Error: Knowledge base '{kb_name}' not found.")
         except FileNotFoundError:
-             print(f"Error: Document file path '{file_path_str}' not found.")
+            print(f"Error: Document file path '{file_path_str}' not found.")
         except Exception as e:
             logger.exception(f"Unexpected error in add: {e}")
             print(f"An unexpected error occurred: {e}")

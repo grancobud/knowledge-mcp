@@ -44,6 +44,14 @@ class EmbeddingCacheConfig(BaseModel):
     enabled: bool = Field(..., description="Whether the embedding cache is enabled")
     similarity_threshold: float = Field(..., description="Similarity threshold for cache hits")
 
+class LoggingConfig(BaseModel):
+    """Configuration for logging."""
+    level: str = Field(default="INFO", description="Logging level (e.g., DEBUG, INFO, WARNING)")
+    max_bytes: int = Field(default=10485760, description="Max size of log file in bytes before rotation (10MB)")
+    backup_count: int = Field(default=5, description="Number of backup log files to keep")
+    detailed_format: str = Field(default="%(asctime)s - %(name)s - %(levelname)s - %(message)s", description="Format string for detailed logs")
+    default_format: str = Field(default="%(levelname)s: %(message)s", description="Format string for console logs")
+
 class LightRAGConfig(BaseModel):
     """Configuration specific to the LightRAG library components."""
     llm: LightRAGLLMConfig
@@ -63,6 +71,7 @@ class Config(BaseModel):
     """
     knowledge_base: KnowledgeBaseConfig
     lightrag: LightRAGConfig
+    logging: LoggingConfig
     env_file: Path = Field(..., description="Path to the .env file relative to the config file")
 
     # --- Singleton Management ---

@@ -10,17 +10,6 @@ async def llm_model_func(
 ) -> str:
     # Use model_name from global config provided by LightRAG within kwargs
     # Check if 'hashing_kv' and 'global_config' are present before accessing
-    # model_name = "gpt-4o-mini" # Default model
-    # if 'hashing_kv' in kwargs and hasattr(kwargs['hashing_kv'], 'global_config'):
-    #     model_name = kwargs["hashing_kv"].global_config.get("llm_model_name")
-    # elif 'model' in kwargs: # Sometimes LightRAG might pass model directly in kwargs
-    #     model_name = kwargs['model']
-    # else:
-    #     # Fallback to instance config if LightRAG internals change
-    #     try:
-    #         model_name = Config.get_instance().lightrag.llm.model_name
-    #     except Exception:
-    #          raise ValueError("OpenAI model name not provided in config or environment variables.") 
     model_name = kwargs["hashing_kv"].global_config.get("llm_model_name")
 
     # Prioritize api_key and base_url from kwargs (coming from llm_model_kwargs)
