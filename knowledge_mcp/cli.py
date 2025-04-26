@@ -7,7 +7,7 @@ import uvicorn  # Keep for potential future server use # noqa: F401
 import time     # Keep for placeholder serve mode
 
 # Updated relative imports
-from knowledge_mcp.config import Config, load_and_validate_config
+from knowledge_mcp.config import Config
 from knowledge_mcp.knowledgebases import KnowledgeBaseManager # Updated module name
 from knowledge_mcp.rag import RagManager # Updated module name
 from knowledge_mcp.shell import Shell # Updated module and class name
@@ -16,19 +16,19 @@ from knowledge_mcp.shell import Shell # Updated module and class name
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+
 def initialize_components(config: Config) -> tuple[KnowledgeBaseManager, RagManager]:
     """Initialize and return manager instances."""
     logger.info("Initializing components...")
     kb_manager = KnowledgeBaseManager(config)
-    # Initialize RagManager - this might load existing KBs
     rag_manager = RagManager(config, kb_manager)
     logger.info("Components initialized.")
     return kb_manager, rag_manager
 
-def run_serve_mode(config: Config):
+def run_serve_mode():
     """Runs the application in server mode."""
     logger.info("Starting in serve mode...")
-    kb_manager, rag_manager = initialize_components(config)
+    kb_manager, rag_manager = initialize_components(Config.get_instance())
     # Placeholder for starting the FastMCP server
     logger.info("Starting FastMCP server...")
     # Example: await run_server(kb_manager, rag_manager, config)
@@ -42,10 +42,10 @@ def run_serve_mode(config: Config):
     except KeyboardInterrupt:
         logger.info("Server stopped.")
 
-def run_manage_mode(config: Config):
+def run_manage_mode():
     """Runs the application in management mode."""
     logger.info("Starting in manage mode...")
-    kb_manager, rag_manager = initialize_components(config)
+    kb_manager, rag_manager = initialize_components(Config.get_instance())
 
     # Placeholder for starting the FastMCP server in the background
     logger.info("Starting FastMCP server in background (placeholder)...")
@@ -96,9 +96,8 @@ def main():
         # If config is expected relative to project root, and cli.py is in the package,
         # we might need to adjust how the default path is handled or make it absolute.
         # For now, assume it's run from project root or path is absolute.
-        config_path = Path(args.config)
-        config = load_and_validate_config(config_path)
-        logger.info(f"Successfully loaded config from {config_path.resolve()}")
+        Config.load(args.config)
+        logger.info(f"Successfully loaded config from {args.config}")
     except FileNotFoundError:
         # Try searching relative to the cli script's parent dir? Or require absolute path?
         logger.critical(f"Configuration file not found: {args.config}")
@@ -111,7 +110,7 @@ def main():
         sys.exit(1)
 
     # Execute the function associated with the chosen command
-    args.func(config)
+    args.func()
 
 if __name__ == "__main__":
     # This allows running the cli directly for development,

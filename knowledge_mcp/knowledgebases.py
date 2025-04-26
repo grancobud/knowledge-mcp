@@ -6,7 +6,7 @@ from typing import List
 import shutil  # Import shutil for rmtree
 
 # from .config import ConfigService # No longer needed directly
-from .config import Config # Import Config
+from knowledge_mcp.config import Config # Import Config
 
 logger = logging.getLogger(__name__)
 

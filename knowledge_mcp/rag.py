@@ -2,9 +2,7 @@
 """Manages LightRAG instances for different knowledge bases."""
 
 import logging
-from pathlib import Path
 from lightrag import LightRAG
-from lightrag.llm.openai import openai_complete, openai_embed
 from lightrag.kg.shared_storage import initialize_pipeline_status
 
 # Need to import Config and KbManager to use them
@@ -33,9 +31,8 @@ class RagManager:
     """Creates, manages, and caches LightRAG instances per knowledge base."""
 
     def __init__(self, config: Config, kb_manager: KnowledgeBaseManager): 
-        """Initializes the RagManager with application config and KB manager."""
+        """Initializes the RagManager with the KB manager."""
         self._rag_instances: dict[str, LightRAG] = {}
-        self.config = config 
         self.kb_manager = kb_manager 
         logger.info("RagManager initialized.") 
 
@@ -66,50 +63,55 @@ class RagManager:
         logger.info(f"Creating new LightRAG instance for KB: {kb_name} in {kb_path}")
 
         try:
-            # Validate required settings sections exist
-            if not self.config.language_model:
-                 raise ConfigurationError("Language model settings are missing.")
-            if not self.config.embedding_model:
-                 raise ConfigurationError("Embedding model settings are missing.")
+            # Get the singleton config instance
+            config = Config.get_instance()
 
-            llm_config = self.config.language_model
-            embed_config = self.config.embedding_model
+            # Validate required settings sections exist
+            if not config.lightrag or not config.lightrag.llm:
+                 raise ConfigurationError("Language model settings (config.lightrag.llm) are missing.")
+            if not config.lightrag.embedding:
+                 raise ConfigurationError("Embedding model settings (config.lightrag.embedding) are missing.")
+            if not config.lightrag.embedding_cache:
+                 raise ConfigurationError("Embedding cache settings (config.lightrag.embedding_cache) are missing.")
+
+            llm_config = config.lightrag.llm
+            embed_config = config.lightrag.embedding
+            cache_config = config.lightrag.embedding_cache
 
             # --- Get Embedding Function and Kwargs ---
-            # Currently hardcoded for OpenAI
             embed_provider = embed_config.provider.lower()
-            if embed_provider != "openai":
+            if embed_provider == "openai":
+                import knowledge_mcp.openai_func
+                embed_func = knowledge_mcp.openai_func.embedding_func
+            else:
                 raise UnsupportedProviderError("Only OpenAI embedding provider currently supported.") 
 
-            # openai_embed needs api_key and optionally base_url and model passed in kwargs
-            embed_kwargs = {"model": embed_config.model_name} 
-            if not embed_config.api_key:
-                 raise ConfigurationError("API key missing for OpenAI embedding provider")
-            embed_kwargs["api_key"] = embed_config.api_key
-            if embed_config.base_url:
-                 embed_kwargs["base_url"] = embed_config.base_url
-
             # --- Get LLM Function and Kwargs ---
-            # Currently hardcoded for OpenAI
             llm_provider = llm_config.provider.lower()
-            if llm_provider != "openai":
-                 raise UnsupportedProviderError("Only OpenAI language model provider currently supported.") 
+            if llm_provider == "openai":
+                import knowledge_mcp.openai_func
+                llm_func = knowledge_mcp.openai_func.llm_model_func
+            else:
+                raise UnsupportedProviderError("Only OpenAI language model provider currently supported.") 
 
             if not llm_config.api_key:
                  raise ConfigurationError("API key missing for OpenAI language model provider")
-            llm_kwargs={"api_key": llm_config.api_key}
-            if llm_config.base_url:
-                llm_kwargs["base_url"] = llm_config.base_url
+            # llm_kwargs={"api_key": llm_config.api_key}
+            # if llm_config.api_base:
+            #     llm_kwargs["base_url"] = llm_config.api_base
             # Add other potential kwargs if needed (e.g., temperature, etc.)
+            llm_kwargs = {}
+            if llm_config.kwargs:
+                llm_kwargs.update(llm_config.kwargs)
 
             # Max tokens for the LLM *model* (for context window sizing)
             # Use LightRAG default if not set, check LightRAG docs for correct handling
-            llm_model_max_tokens = getattr(llm_config, 'max_tokens', None)
+            llm_model_max_tokens = llm_config.max_token_size
 
             logger.info(
                 f"Attempting to initialize LightRAG for {kb_name} with parameters:\n"
                 f"  working_dir: {kb_path}\n"
-                f"  embed_model: {embed_config.model_name}, embed_kwargs: {embed_kwargs}\n"
+                f"  embed_model: {embed_config.model_name}\n"
                 f"  llm_model: {llm_config.model_name}, llm_kwargs: {llm_kwargs}\n"
                 f"  llm_model_max_token_size: {llm_model_max_tokens}"
             )
@@ -118,15 +120,14 @@ class RagManager:
             # Note: Verify LightRAG constructor parameters closely with LightRAG docs
             rag = LightRAG(
                 working_dir=str(kb_path),
-                llm_model_func=openai_complete,
+                llm_model_func=llm_func,
                 llm_model_kwargs=llm_kwargs,
                 llm_model_name=llm_config.model_name, 
                 llm_model_max_token_size=llm_model_max_tokens,
-                embedding_func=openai_embed,
-                # embedding_model_kwargs=embed_kwargs,   
+                embedding_func=embed_func,
                 embedding_cache_config={
-                    "enabled": True,
-                    "similarity_threshold": 0.90,
+                    "enabled": cache_config.enabled,
+                    "similarity_threshold": cache_config.similarity_threshold,
                 },              
             )
             print(rag)
