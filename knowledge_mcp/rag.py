@@ -6,6 +6,7 @@ import logging.handlers
 from lightrag import LightRAG
 from lightrag.kg.shared_storage import initialize_pipeline_status
 from typing import Dict, Optional, Any
+import asyncio
 
 # Need to import Config and KbManager to use them
 from knowledge_mcp.config import Config
@@ -89,7 +90,7 @@ class RagManager:
         self._kb_loggers[logger_name] = kb_logger
         return kb_logger
 
-    async def get_rag_instance(self, kb_name: str) -> LightRAG:
+    def get_rag_instance(self, kb_name: str) -> LightRAG:
         """
         Retrieves or creates and initializes a LightRAG instance for the given KB.
 
@@ -108,7 +109,13 @@ class RagManager:
         if kb_name in self._rag_instances:
             self._get_kb_logger(kb_name).info("Returning cached LightRAG instance.")
             return self._rag_instances[kb_name]
-
+        else:
+            if self.kb_manager.kb_exists(kb_name):
+                return asyncio.run(self.create_rag_instance(kb_name))
+            else:
+                raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' does not exist.")              
+    
+    async def create_rag_instance(self, kb_name: str) -> LightRAG:
         # Use KbManager to check existence and get path
         if not self.kb_manager.kb_exists(kb_name):
             raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' does not exist.")
@@ -256,19 +263,17 @@ class RagManager:
             # Consider wrapping in a specific IngestionError if needed
             raise RAGManagerError(f"Ingestion failed for '{file_path.name}': {e}") from e
 
-    async def query(self, kb_name: str, query_text: str, **kwargs: Any) -> Any:
+    def query(self, kb_name: str, query_text: str, **kwargs: Any) -> Any:
         """Performs a query against the specified knowledge base."""
         kb_logger = self._get_kb_logger(kb_name)
-        kb_logger.info(f"Received query: '{query_text}'")
         
         try:
-            rag_instance = await self.get_rag_instance(kb_name)
+            rag_instance = self.get_rag_instance(kb_name)
             
             # Use LightRAG's query method
             # Check LightRAG docs for parameters and return structure
             kb_logger.debug(f"Forwarding query to LightRAG instance with kwargs: {kwargs}")
-            result = await rag_instance.query(query=query_text, **kwargs)
-            kb_logger.info("Query processed successfully.")
+            result = rag_instance.query(query=query_text, **kwargs)
             kb_logger.debug(f"Query result: {result}") # Be mindful of logging sensitive data
             return result
         
