@@ -1,16 +1,17 @@
-# knowledge_mcp/rag_manager.py
+# knowledge_mcp/rag.py
 """Manages LightRAG instances for different knowledge bases."""
 
 import logging
 import logging.handlers
 from lightrag import LightRAG
+from lightrag.base import QueryParam
 from lightrag.kg.shared_storage import initialize_pipeline_status
 from typing import Dict, Optional, Any
 import asyncio
 
 # Need to import Config and KbManager to use them
 from knowledge_mcp.config import Config
-from knowledge_mcp.knowledgebases import KnowledgeBaseManager, KnowledgeBaseNotFoundError
+from knowledge_mcp.knowledgebases import KnowledgeBaseManager, KnowledgeBaseNotFoundError, load_kb_query_config
 
 logger = logging.getLogger(__name__) # General logger for RagManager setup/errors not specific to a KB
 
@@ -35,6 +36,7 @@ class RagManager:
         self._rag_instances: Dict[str, LightRAG] = {}
         self._kb_loggers: Dict[str, logging.Logger] = {}
         self.kb_manager = kb_manager 
+        self.config = config # Store config if needed for global defaults
         logger.info("RagManager initialized.") 
 
     def _get_kb_logger(self, kb_name: str) -> logging.Logger:
@@ -93,27 +95,30 @@ class RagManager:
     def get_rag_instance(self, kb_name: str) -> LightRAG:
         """
         Retrieves or creates and initializes a LightRAG instance for the given KB.
-
-        Args:
-            kb_name: The name of the knowledge base.
-
-        Returns:
-            An initialized LightRAG instance.
-
-        Raises:
-            KnowledgeBaseNotFoundError: If the underlying KB directory doesn't exist.
-            UnsupportedProviderError: If embedding or LLM provider is not supported (currently only checks OpenAI).
-            ConfigurationError: If required configuration (e.g., API key) is missing.
-            RAGInitializationError: If LightRAG fails to initialize.
+        Synchronous access, but uses asyncio.run() internally if creation needed.
         """
         if kb_name in self._rag_instances:
             self._get_kb_logger(kb_name).info("Returning cached LightRAG instance.")
             return self._rag_instances[kb_name]
         else:
             if self.kb_manager.kb_exists(kb_name):
-                return asyncio.run(self.create_rag_instance(kb_name))
+                # Call the async creation method using asyncio.run()
+                self._get_kb_logger(kb_name).info("No cached instance found. Running async create_rag_instance...")
+                # This will block the current synchronous thread until create_rag_instance completes.
+                # Be mindful of potential nested asyncio.run() calls if create_rag_instance
+                # itself calls other functions that use asyncio.run().
+                try:
+                    return asyncio.run(self.create_rag_instance(kb_name))
+                except RuntimeError as e:
+                    # Handle potential nested asyncio.run errors if they occur
+                    if "cannot be called from a running event loop" in str(e):
+                        kb_logger = self._get_kb_logger(kb_name)
+                        kb_logger.error("Detected nested asyncio.run() call attempt during RAG instance creation.")
+                        raise RAGInitializationError("Cannot create RAG instance from within a running event loop via sync get_rag_instance.") from e
+                    else:
+                        raise # Re-raise other runtime errors
             else:
-                raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' does not exist.")              
+                raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' does not exist.")
     
     async def create_rag_instance(self, kb_name: str) -> LightRAG:
         # Use KbManager to check existence and get path
@@ -199,18 +204,66 @@ class RagManager:
             # Assuming initialize_components() based on common patterns
             await rag.initialize_storages()
             await initialize_pipeline_status()
-            kb_logger.info("Successfully initialized LightRAG instance.")
-
+            kb_logger.info(f"Successfully initialized LightRAG instance for {kb_name}.")
             self._rag_instances[kb_name] = rag
             return rag
 
         except (UnsupportedProviderError, ConfigurationError, KnowledgeBaseNotFoundError) as e:
-             logger.error(f"Setup error for KB '{kb_name}': {e}")
-             raise 
+            kb_logger.error(f"Configuration error creating RAG instance for {kb_name}: {e}")
+            raise # Re-raise specific config errors
         except Exception as e:
-            # Catch potential errors during LightRAG init or storage init
-            logger.exception(f"Failed to initialize LightRAG for KB '{kb_name}' at {kb_path}: {e}")
-            raise RAGInitializationError(f"LightRAG initialization failed for KB '{kb_name}': {e}") from e
+            kb_logger.exception(f"Unexpected error creating RAG instance for {kb_name}: {e}")
+            # Wrap unexpected errors in a specific exception type
+            raise RAGInitializationError(f"Failed to initialize LightRAG for {kb_name}: {e}") from e
+
+    def query(self, kb_name: str, query_text: str, **kwargs: Any) -> Any:
+        """
+        Executes a query against the specified knowledge base synchronously,
+        loading and applying its configuration.
+        """
+        kb_logger = self._get_kb_logger(kb_name)
+        kb_logger.info(f"--- Executing synchronous query for KB: {kb_name} ---")
+        try:
+            # Get instance (get_rag_instance is now synchronous)
+            rag_instance = self.get_rag_instance(kb_name)
+            kb_path = self.kb_manager.get_kb_path(kb_name)
+
+            # Load KB-specific configuration
+            kb_logger.info(f"Loading query configuration from {kb_path / 'config.yaml'}...")
+            kb_config = load_kb_query_config(kb_path)
+            kb_logger.debug(f"Loaded sync config for '{kb_name}': {kb_config}")
+
+            # Merge configurations: kwargs > kb_config
+            final_query_params = kb_config.copy()
+            if kwargs:
+                kb_logger.info(f"Applying runtime query kwargs: {kwargs}")
+                final_query_params.update(kwargs)
+            else:
+                kb_logger.info("No runtime query kwargs provided.")
+
+            kb_logger.info(f"Executing query with final parameters: {final_query_params}")
+
+            # Create QueryParam instance
+            try:
+                query_param_instance = QueryParam(**final_query_params)
+                kb_logger.debug(f"Created QueryParam instance: {query_param_instance}")
+            except Exception as e:
+                kb_logger.error(f"Failed to create QueryParam instance from params {final_query_params}: {e}")
+                raise ConfigurationError(f"Invalid query parameters: {e}") from e
+
+            # Execute the query using the underlying LightRAG instance
+            # IMPORTANT: Assumes rag_instance.query can be called SYNCHRONOUSLY
+            # If LightRAG's query is inherently async, this will fail or block unexpectedly.
+            result = rag_instance.query(query=query_text, param=query_param_instance)
+            kb_logger.info(f"Sync query call to LightRAG successful for '{kb_name}'.")
+            return result
+
+        except (KnowledgeBaseNotFoundError, RAGInitializationError, ConfigurationError) as e:
+            kb_logger.error(f"Error preparing or executing query for KB '{kb_name}': {e}")
+            raise
+        except Exception as e:
+            kb_logger.exception(f"Unexpected error during sync query execution for KB '{kb_name}': {e}")
+            raise RAGManagerError(f"Sync query failed: {e}") from e
 
     # --- Search Method (Placeholder) ---
     async def search(self, kb_name: str, query: str):
@@ -237,7 +290,8 @@ class RagManager:
         kb_logger.info(f"Ingesting document '{file_path.name}' into KB '{kb_name}'...")
         
         try:
-            rag_instance = await self.get_rag_instance(kb_name)
+            # Get instance (get_rag_instance is now synchronous)
+            rag_instance = self.get_rag_instance(kb_name)
             
             # Use LightRAG's ingest_doc method
             # Check LightRAG docs for exact parameters and return value
@@ -262,24 +316,3 @@ class RagManager:
             kb_logger.exception(f"Failed to ingest document '{file_path.name}': {e}")
             # Consider wrapping in a specific IngestionError if needed
             raise RAGManagerError(f"Ingestion failed for '{file_path.name}': {e}") from e
-
-    def query(self, kb_name: str, query_text: str, **kwargs: Any) -> Any:
-        """Performs a query against the specified knowledge base."""
-        kb_logger = self._get_kb_logger(kb_name)
-        
-        try:
-            rag_instance = self.get_rag_instance(kb_name)
-            
-            # Use LightRAG's query method
-            # Check LightRAG docs for parameters and return structure
-            kb_logger.debug(f"Forwarding query to LightRAG instance with kwargs: {kwargs}")
-            result = rag_instance.query(query=query_text, **kwargs)
-            kb_logger.debug(f"Query result: {result}") # Be mindful of logging sensitive data
-            return result
-        
-        except RAGInitializationError as e:
-            kb_logger.error(f"Cannot query, RAG instance failed to initialize: {e}")
-            raise # Re-raise the initialization error
-        except Exception as e:
-            kb_logger.exception(f"Failed to process query '{query_text}': {e}")
-            raise RAGManagerError(f"Query failed: {e}") from e
