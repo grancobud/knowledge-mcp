@@ -2,14 +2,27 @@
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Any
 import shutil  # Import shutil for rmtree
+import yaml  # Added for YAML loading
 
-# from .config import ConfigService # No longer needed directly
 from knowledge_mcp.config import Config # Import Config
 
 logger = logging.getLogger(__name__)
 
+# Default query parameters for a new/unconfigured knowledge base config.yaml
+# Based on the subset specified in Task 12
+DEFAULT_QUERY_PARAMS: dict[str, Any] = {
+    "mode": "global",
+    "only_need_context": False,
+    "only_need_prompt": False,
+    "response_type": "Multiple Paragraphs",
+    "top_k": 60,
+    "max_token_for_text_unit": 4000,
+    "max_token_for_global_context": 4000,
+    "max_token_for_local_context": 4000,
+    "history_turns": 3,
+}
 
 class KnowledgeBaseError(Exception):
     """Base exception for knowledge base operations."""
@@ -35,8 +48,14 @@ class KnowledgeBaseManager:
             config: The application config object.
 
         Raises:
-            TypeError: If the resolved base directory path is not valid or accessible.
+            TypeError: If the config argument is not a Config instance or
+                       if the resolved base directory path is not valid or accessible.
+            KnowledgeBaseError: If the base directory cannot be created or is not a directory.
         """
+        # Explicitly check the type of the config object first
+        if not isinstance(config, Config):
+            raise TypeError(f"Expected a Config instance, but got {type(config).__name__}")
+
         if not config.knowledge_base or not config.knowledge_base.base_dir:
             msg = "Knowledge base base_dir not configured in config."
             logger.error(msg)
@@ -65,23 +84,43 @@ class KnowledgeBaseManager:
         return self.get_kb_path(name).is_dir()
 
     def create_kb(self, name: str) -> Path:
-        """Creates a new knowledge base directory."""
+        """Creates a new knowledge base directory.
+
+        Args:
+            name: The name for the new knowledge base.
+
+        Returns:
+            The Path object pointing to the created knowledge base directory.
+
+        Raises:
+            KnowledgeBaseExistsError: If a directory with the same name already exists.
+            KnowledgeBaseError: If the directory cannot be created due to filesystem issues.
+        """
         kb_path = self.get_kb_path(name)
-        if self.kb_exists(name):
-            logger.warning(f"Attempted to create existing knowledge base: {name}")
+        if kb_path.exists():
             raise KnowledgeBaseExistsError(f"Knowledge base '{name}' already exists at {kb_path}")
 
         try:
-            kb_path.mkdir(exist_ok=False)
+            kb_path.mkdir(parents=True, exist_ok=False)
             logger.info(f"Created knowledge base directory: {kb_path}")
-            # Create subdirectories if needed (e.g., 'docs', 'index')
-            # (kb_path / 'docs').mkdir(exist_ok=True)
-            # (kb_path / 'index').mkdir(exist_ok=True)
+
+            # --- Add config.yaml creation --- #
+            config_file_path = kb_path / "config.yaml"
+            try:
+                with open(config_file_path, 'w', encoding='utf-8') as f:
+                    yaml.dump(DEFAULT_QUERY_PARAMS, f, default_flow_style=False)
+                logger.info(f"Created default config file: {config_file_path}")
+            except (IOError, yaml.YAMLError) as e:
+                logger.error(f"Failed to create default config file for KB '{name}': {e}")
+                # Consider if we should clean up the created directory here
+                # For now, we'll raise an error indicating partial success/failure
+                raise KnowledgeBaseError(f"KB directory created, but failed to write config.yaml: {e}") from e
+            # --- End config.yaml creation --- #
+
             return kb_path
         except OSError as e:
-            logger.error(f"Failed to create knowledge base directory '{name}' at {kb_path}: {e}")
-            # Re-raise as a generic KnowledgeBaseError or handle specific OS errors
-            raise KnowledgeBaseError(f"OS error creating knowledge base '{name}': {e}") from e
+            logger.error(f"Failed to create directory for KB '{name}' at {kb_path}: {e}")
+            raise KnowledgeBaseError(f"Could not create directory for KB '{name}': {e}") from e
 
     def list_kbs(self) -> List[str]:
         """Lists existing knowledge base directories."""
@@ -130,3 +169,54 @@ class KnowledgeBaseManager:
         # ... further implementation needed with RagManager ...
 
     # Add query_kb etc. later, likely involving RagManager
+
+
+def load_kb_query_config(kb_path: Path) -> dict[str, Any]:
+    """Loads query configuration from config.yaml within a KB directory.
+
+    Args:
+        kb_path: The path to the knowledge base's root directory.
+
+    Returns:
+        A dictionary containing the query parameters, merged with defaults.
+        Returns defaults if config.yaml is missing or invalid.
+    """
+    config_file_path = kb_path / "config.yaml"
+    kb_name = kb_path.name
+    loaded_config: dict[str, Any] = {}
+
+    if config_file_path.is_file():
+        logger.debug(f"Loading query config for KB '{kb_name}' from {config_file_path}")
+        try:
+            with open(config_file_path, 'r', encoding='utf-8') as f:
+                loaded_data = yaml.safe_load(f)
+                if isinstance(loaded_data, dict):
+                    # Filter to only include keys relevant to query params
+                    loaded_config = {
+                        k: v for k, v in loaded_data.items()
+                        if k in DEFAULT_QUERY_PARAMS
+                    }
+                    logger.debug(f"Successfully loaded and filtered config for KB '{kb_name}': {loaded_config}")
+                elif loaded_data is None:
+                    # Empty file, use defaults
+                    logger.warning(f"Config file for KB '{kb_name}' is empty. Using default query parameters.")
+                else:
+                    # Invalid format (not a dictionary)
+                    logger.error(f"Invalid config format in {config_file_path}. Expected a dictionary, got {type(loaded_data)}. Using default query parameters.")
+
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing YAML file {config_file_path}: {e}. Using default query parameters.")
+        except OSError as e:
+            logger.error(f"Error reading config file {config_file_path}: {e}. Using default query parameters.")
+        except Exception as e:
+            logger.error(f"Unexpected error loading config for KB '{kb_name}' from {config_file_path}: {e}. Using default query parameters.", exc_info=True)
+    else:
+        logger.debug(f"Config file not found for KB '{kb_name}' at {config_file_path}. Using default query parameters.")
+
+    # Merge defaults with loaded (and filtered) config
+    # Start with defaults, then overwrite with loaded values
+    final_config = DEFAULT_QUERY_PARAMS.copy()
+    final_config.update(loaded_config)
+
+    logger.debug(f"Final query config for KB '{kb_name}': {final_config}")
+    return final_config
