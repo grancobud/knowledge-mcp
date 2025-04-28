@@ -197,7 +197,9 @@ class RagManager:
             else:
                 kb_logger.info("No runtime query kwargs provided.")
 
-            kb_logger.info(f"Executing query with final parameters: {final_query_params}")
+            # Ensure 'description' is not passed as a query param
+            final_query_params.pop("description", None)
+            kb_logger.info(f"Executing query with final parameters (excluding description): {final_query_params}")
 
             # Create QueryParam instance
             try:

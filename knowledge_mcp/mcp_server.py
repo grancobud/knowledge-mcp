@@ -2,9 +2,9 @@
 """FastMCP server exposing tools to interact with knowledge bases."""
 
 import logging
-import asyncio
+# import asyncio # Removed unused import
 import json
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 
 from pydantic import BaseModel, Field, field_validator
 from fastmcp import FastMCP
@@ -154,14 +154,23 @@ class MCP:
         return _wrap_result(answer)
 
     async def list_knowledgebases(self) -> str:
-        """Lists all available knowledge base names."""
+        """Lists all available knowledge bases and their descriptions."""
         logger.info("Executing list_knowledgebases")
         try:
-            # kb_manager.list_kbs is sync, run in thread
-            kb_list: List[str] = await asyncio.to_thread(self.kb_manager.list_kbs)
-            logger.info(f"Found knowledge bases: {kb_list}")
-            # Return as a JSON string list for structured output
-            return json.dumps(kb_list)
+            # kb_manager.list_kbs is now async and returns Dict[str, str]
+            kb_dict: Dict[str, str] = await self.kb_manager.list_kbs()
+            logger.info(f"Found knowledge bases: {kb_dict}")
+
+            # Transform the dict into the desired list of objects format
+            kb_list_formatted = [
+                {"name": name, "description": description}
+                for name, description in kb_dict.items()
+            ]
+
+            # Wrap in the final structure and return as JSON
+            result = {"knowledge_bases": kb_list_formatted}
+            return json.dumps(result)
+
         except KnowledgeBaseError as e:
             logger.error(f"Error listing knowledge bases: {e}", exc_info=True)
             # Use ValueError for user-facing errors expected by FastMCP

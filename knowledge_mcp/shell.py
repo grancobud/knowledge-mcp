@@ -70,16 +70,32 @@ class Shell(cmd.Cmd):
     # --- KB Management Commands ---
 
     def do_create(self, arg: str):
-        """Create a new knowledge base. Usage: create <name>"""
+        """Create a new knowledge base. Usage: create <name> ["description"]"""
         try:
             args = shlex.split(arg)
-            if len(args) != 1:
-                print("Usage: create <name>")
+            if not 1 <= len(args) <= 2:
+                print('Usage: create <name> ["description"]')
                 return
+
             name = args[0]
-            self.kb_manager.create_kb(name)
-            asyncio.run(self.rag_manager.create_rag_instance(name))
-            print(f"Knowledge base '{name}' created successfully.")
+            description = args[1] if len(args) == 2 else None
+
+            self.kb_manager.create_kb(name, description=description) # Pass description
+            # Optionally initialize the RAG instance immediately (if desired)
+            # Consider if this should be async or handled differently
+            # For now, assuming synchronous initialization might block, but let's keep it simple
+            # If create_rag_instance becomes async, this needs `asyncio.run`
+            try:
+                print(f"Initializing RAG instance for '{name}'...")
+                # Assuming create_rag_instance is now async
+                asyncio.run(self.rag_manager.create_rag_instance(name))
+                print(f"Knowledge base '{name}' created and RAG instance initialized successfully.")
+            except (RAGInitializationError, ConfigurationError, RAGManagerError) as rag_e:
+                logger.warning(f"KB '{name}' created, but failed to initialize RAG instance: {rag_e}")
+                print(f"Warning: Knowledge base '{name}' created, but RAG initialization failed: {rag_e}")
+                print("You may need to configure LLM/Embedding settings before using this KB.")
+            # Removed original asyncio.run(self.rag_manager.create_rag_instance(name))
+            # print(f"Knowledge base '{name}' created successfully.")
         except KnowledgeBaseExistsError:
             print(f"Error: Knowledge base '{name}' already exists.")
         except KnowledgeBaseError as e:
@@ -89,15 +105,26 @@ class Shell(cmd.Cmd):
             print(f"An unexpected error occurred: {e}")
 
     def do_list(self, arg: str):
-        """List all available knowledge bases."""
+        """List all available knowledge bases and their descriptions."""
         try:
-            kbs = self.kb_manager.list_kbs()
-            if not kbs:
+            # list_kbs is now async, run it in the event loop
+            kbs_with_desc = asyncio.run(self.kb_manager.list_kbs())
+
+            if not kbs_with_desc:
                 print("No knowledge bases found.")
                 return
+
             print("Available knowledge bases:")
-            for kb_name in kbs:
-                print(f"- {kb_name}")
+            # Determine max name length for alignment
+            max_len = 0
+            if kbs_with_desc: # Check if dict is not empty
+                 max_len = max(len(name) for name in kbs_with_desc.keys()) if kbs_with_desc else 0
+
+            for name, desc in kbs_with_desc.items():
+                print(f"- {name:<{max_len}} : {desc}") # Print name and description
+
+        except KnowledgeBaseError as e:
+            print(f"Error listing knowledge bases: {e}")
         except Exception as e:
             logger.exception(f"Unexpected error in list: {e}")
             print(f"An unexpected error occurred: {e}")
@@ -124,26 +151,6 @@ class Shell(cmd.Cmd):
         except Exception as e:
             logger.exception(f"Unexpected error in delete: {e}")
             print(f"An unexpected error occurred: {e}")
-
-    def do_list_kbs(self, arg):
-        """Lists all existing knowledge bases."""
-        if arg:
-            print("Usage: list_kbs (no arguments required)", file=self.stderr)
-            return
-        try:
-            kbs = self.kb_manager.list_kbs()
-            if not kbs:
-                print("No knowledge bases found.", file=self.stdout)
-            else:
-                print("Available Knowledge Bases:", file=self.stdout)
-                for kb_name in sorted(kbs):
-                    print(f"  - {kb_name}", file=self.stdout)
-        except KnowledgeBaseError as e:
-            print(f"Error listing knowledge bases: {e}", file=self.stderr)
-
-    def help_list_kbs(self):
-        print("Lists all existing knowledge base directories.", file=self.stdout)
-        print("Usage: list_kbs", file=self.stdout)
 
     # --- KB Config Management ---
 
@@ -308,11 +315,3 @@ class Shell(cmd.Cmd):
     def do_clear(self, arg: str): 
         """Clear the screen."""
         os.system('cls' if os.name == 'nt' else 'clear')
-
-    # --- Autocompletion ---
-    def complete_create(self, text: str, line: str, begidx: int, endidx: int) -> List[str]:
-        # Ensure this method has a body
-        return [] # Placeholder body
-
-    def complete_delete(self, text: str, line: str, begidx: int, endidx: int) -> List[str]:
-        """Provide completion for the 'delete' command."""

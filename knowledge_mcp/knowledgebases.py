@@ -2,9 +2,10 @@
 
 import logging
 from pathlib import Path
-from typing import List, Any
+from typing import Any, Dict, Optional
 import shutil  # Import shutil for rmtree
 import yaml  # Added for YAML loading
+import asyncio # Add asyncio
 
 from knowledge_mcp.config import Config # Import Config
 
@@ -13,7 +14,8 @@ logger = logging.getLogger(__name__)
 # Default query parameters for a new/unconfigured knowledge base config.yaml
 # Based on the subset specified in Task 12
 DEFAULT_QUERY_PARAMS: dict[str, Any] = {
-    "mode": "global",
+    "description": "A useful knowledge base", # Add description field
+    "mode": "mix",
     "only_need_context": False,
     "only_need_prompt": False,
     "response_type": "Multiple Paragraphs",
@@ -83,18 +85,15 @@ class KnowledgeBaseManager:
         """Checks if a knowledge base directory exists."""
         return self.get_kb_path(name).is_dir()
 
-    def create_kb(self, name: str) -> Path:
+    def create_kb(self, name: str, description: Optional[str] = None) -> Path:
         """Creates a new knowledge base directory.
 
         Args:
             name: The name for the new knowledge base.
+            description: An optional description for the knowledge base.
 
         Returns:
             The Path object pointing to the created knowledge base directory.
-
-        Raises:
-            KnowledgeBaseExistsError: If a directory with the same name already exists.
-            KnowledgeBaseError: If the directory cannot be created due to filesystem issues.
         """
         kb_path = self.get_kb_path(name)
         if kb_path.exists():
@@ -105,10 +104,14 @@ class KnowledgeBaseManager:
             logger.info(f"Created knowledge base directory: {kb_path}")
 
             # --- Add config.yaml creation --- #
+            config_data = DEFAULT_QUERY_PARAMS.copy() # Start with defaults
+            if description:
+                config_data["description"] = description # Override if provided
+
             config_file_path = kb_path / "config.yaml"
             try:
                 with open(config_file_path, 'w', encoding='utf-8') as f:
-                    yaml.dump(DEFAULT_QUERY_PARAMS, f, default_flow_style=False)
+                    yaml.dump(config_data, f, default_flow_style=False) # Use config_data
                 logger.info(f"Created default config file: {config_file_path}")
             except (IOError, yaml.YAMLError) as e:
                 logger.error(f"Failed to create default config file for KB '{name}': {e}")
@@ -122,14 +125,37 @@ class KnowledgeBaseManager:
             logger.error(f"Failed to create directory for KB '{name}' at {kb_path}: {e}")
             raise KnowledgeBaseError(f"Could not create directory for KB '{name}': {e}") from e
 
-    def list_kbs(self) -> List[str]:
-        """Lists existing knowledge base directories."""
+    async def list_kbs(self) -> Dict[str, str]:
+        """Lists existing knowledge base directories and their descriptions asynchronously."""
+        kbs: Dict[str, str] = {}
         # Base directory existence checked in __init__
         try:
-            return [d.name for d in self.base_dir.iterdir() if d.is_dir()]
+            for d in self.base_dir.iterdir():
+                if d.is_dir():
+                    kb_name = d.name
+                    config_path = d / "config.yaml"
+                    description = "No description found." # Default description
+                    if config_path.is_file():
+                        try:
+                            # Use asyncio.to_thread for synchronous file I/O
+                            content = await asyncio.to_thread(config_path.read_text, encoding='utf-8')
+                            data = yaml.safe_load(content)
+                            if isinstance(data, dict) and "description" in data:
+                                description = str(data["description"]) # Ensure it's a string
+                        except (IOError, yaml.YAMLError, UnicodeDecodeError) as e:
+                            logger.warning(f"Could not read/parse config for KB '{kb_name}': {e}")
+                            description = f"Error reading description: {e}" # Provide error info
+                        except Exception as e: # Catch unexpected errors
+                            logger.error(f"Unexpected error reading config for KB '{kb_name}': {e}")
+                            description = "Unexpected error reading description."
+                    else:
+                        logger.warning(f"Config file not found for KB '{kb_name}'. Using default description.")
+
+                    kbs[kb_name] = description
+            return kbs
         except OSError as e:
             logger.error(f"Error listing knowledge bases in {self.base_dir}: {e}")
-            # Depending on requirements, could return [] or raise
+            # Depending on requirements, could return {} or raise
             raise KnowledgeBaseError(f"Error listing knowledge bases: {e}") from e
 
     def delete_kb(self, name: str) -> None:
@@ -192,13 +218,15 @@ def load_kb_query_config(kb_path: Path) -> dict[str, Any]:
                 loaded_data = yaml.safe_load(f)
                 if isinstance(loaded_data, dict):
                     # Filter to only include keys relevant to query params
+                    # Keep description if present, even if not in DEFAULT_QUERY_PARAMS strictly for querying
+                    # Filter only query params, description is metadata now
                     loaded_config = {
                         k: v for k, v in loaded_data.items()
-                        if k in DEFAULT_QUERY_PARAMS
+                        if k in DEFAULT_QUERY_PARAMS and k != "description"
                     }
-                    logger.debug(f"Successfully loaded and filtered config for KB '{kb_name}': {loaded_config}")
+                    logger.debug(f"Successfully loaded and filtered query config for KB '{kb_name}': {loaded_config}")
                 elif loaded_data is None:
-                    # Empty file, use defaults
+                    # Empty file, use defaults (excluding description)
                     logger.warning(f"Config file for KB '{kb_name}' is empty. Using default query parameters.")
                 else:
                     # Invalid format (not a dictionary)
