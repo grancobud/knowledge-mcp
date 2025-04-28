@@ -34,63 +34,9 @@ class RagManager:
     def __init__(self, config: Config, kb_manager: KnowledgeBaseManager): 
         """Initializes the RagManager with the KB manager."""
         self._rag_instances: Dict[str, LightRAG] = {}
-        self._kb_loggers: Dict[str, logging.Logger] = {}
         self.kb_manager = kb_manager 
         self.config = config # Store config if needed for global defaults
         logger.info("RagManager initialized.") 
-
-    def _get_kb_logger(self, kb_name: str) -> logging.Logger:
-        """Gets or creates a logger specific to a knowledge base."""
-        logger_name = f"kbmcp.{kb_name}"
-        if logger_name in self._kb_loggers:
-            return self._kb_loggers[logger_name]
-
-        # --- Configure new KB logger --- 
-        kb_logger = logging.getLogger(logger_name)
-        
-        # Check if handlers are already configured (e.g., by a different process/thread? unlikely here but safe)
-        if not kb_logger.handlers:
-            main_log_config = Config.get_instance().logging
-            try:
-                kb_path = self.kb_manager.get_kb_path(kb_name)
-            except KnowledgeBaseNotFoundError:
-                 # Should not happen if called after KB exists, but handle defensively
-                 logger.error(f"Attempted to get logger for non-existent KB '{kb_name}'")
-                 # Return the main logger as a fallback? Or raise error?
-                 # Returning main logger might hide issues. Let's return the unconfigured kb_logger.
-                 return kb_logger
-            
-            kb_log_dir = kb_path / "logs"
-            kb_log_file = kb_log_dir / f"kbmcp-{kb_name}.log"
-            kb_log_dir.mkdir(parents=True, exist_ok=True)
-
-            # File Handler
-            file_formatter = logging.Formatter(main_log_config.detailed_format)
-            file_handler = logging.handlers.RotatingFileHandler(
-                filename=kb_log_file,
-                maxBytes=main_log_config.max_bytes,
-                backupCount=main_log_config.backup_count,
-                encoding="utf-8",
-            )
-            file_handler.setFormatter(file_formatter)
-            file_handler.setLevel(main_log_config.level)
-            kb_logger.addHandler(file_handler)
-
-            # Console Handler (optional, could let main logger handle console)
-            # If added, KB-specific messages will appear twice on console (once via main, once via KB logger)
-            # Let's skip adding a separate console handler here to avoid duplicate console logs.
-            # console_formatter = logging.Formatter(main_log_config.default_format)
-            # console_handler = logging.StreamHandler()
-            # console_handler.setFormatter(console_formatter)
-            # console_handler.setLevel(main_log_config.level)
-            # kb_logger.addHandler(console_handler)
-
-            kb_logger.setLevel(main_log_config.level)
-            kb_logger.propagate = False # Crucial: Prevent messages going to root/kbmcp handler
-            logger.info(f"Configured logger '{logger_name}' to file: {kb_log_file}")
-            
-        self._kb_loggers[logger_name] = kb_logger
-        return kb_logger
 
     def get_rag_instance(self, kb_name: str) -> LightRAG:
         """
@@ -98,12 +44,12 @@ class RagManager:
         Synchronous access, but uses asyncio.run() internally if creation needed.
         """
         if kb_name in self._rag_instances:
-            self._get_kb_logger(kb_name).info("Returning cached LightRAG instance.")
+            logging.getLogger(f"kbmcp.{kb_name}").info("Returning cached LightRAG instance.")
             return self._rag_instances[kb_name]
         else:
             if self.kb_manager.kb_exists(kb_name):
                 # Call the async creation method using asyncio.run()
-                self._get_kb_logger(kb_name).info("No cached instance found. Running async create_rag_instance...")
+                logging.getLogger(f"kbmcp.{kb_name}").info("No cached instance found. Running async create_rag_instance...")
                 # This will block the current synchronous thread until create_rag_instance completes.
                 # Be mindful of potential nested asyncio.run() calls if create_rag_instance
                 # itself calls other functions that use asyncio.run().
@@ -112,8 +58,7 @@ class RagManager:
                 except RuntimeError as e:
                     # Handle potential nested asyncio.run errors if they occur
                     if "cannot be called from a running event loop" in str(e):
-                        kb_logger = self._get_kb_logger(kb_name)
-                        kb_logger.error("Detected nested asyncio.run() call attempt during RAG instance creation.")
+                        logging.getLogger(f"kbmcp.{kb_name}").error("Detected nested asyncio.run() call attempt during RAG instance creation.")
                         raise RAGInitializationError("Cannot create RAG instance from within a running event loop via sync get_rag_instance.") from e
                     else:
                         raise # Re-raise other runtime errors
@@ -125,8 +70,7 @@ class RagManager:
         if not self.kb_manager.kb_exists(kb_name):
             raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' does not exist.")
         kb_path = self.kb_manager.get_kb_path(kb_name)
-        kb_logger = self._get_kb_logger(kb_name)
-        kb_logger.info(f"Creating new LightRAG instance in {kb_path}")
+        logging.getLogger(f"kbmcp.{kb_name}").info(f"Creating new LightRAG instance in {kb_path}")
 
         try:
             # Get the singleton config instance
@@ -141,6 +85,7 @@ class RagManager:
                  raise ConfigurationError("Embedding cache settings (config.lightrag.embedding_cache) are missing.")
 
             llm_config = config.lightrag.llm
+            kb_logger = logging.getLogger(f"kbmcp.{kb_name}") # Get logger once for this method
             embed_config = config.lightrag.embedding
             cache_config = config.lightrag.embedding_cache
 
@@ -209,19 +154,32 @@ class RagManager:
             return rag
 
         except (UnsupportedProviderError, ConfigurationError, KnowledgeBaseNotFoundError) as e:
-            kb_logger.error(f"Configuration error creating RAG instance for {kb_name}: {e}")
+            logging.getLogger(f"kbmcp.{kb_name}").error(f"Configuration error creating RAG instance for {kb_name}: {e}")
             raise # Re-raise specific config errors
         except Exception as e:
-            kb_logger.exception(f"Unexpected error creating RAG instance for {kb_name}: {e}")
+            logging.getLogger(f"kbmcp.{kb_name}").exception(f"Unexpected error creating RAG instance for {kb_name}: {e}")
             # Wrap unexpected errors in a specific exception type
             raise RAGInitializationError(f"Failed to initialize LightRAG for {kb_name}: {e}") from e
+
+    def remove_rag_instance(self, kb_name: str | None = None) -> None:
+        """Removes a rag instance by name"""
+        if kb_name:
+            if kb_name in self._rag_instances:
+                del self._rag_instances[kb_name]
+                logger.info(f"Removed LightRAG instance for KB: {kb_name}")
+            else:
+                logger.error(f"Knowledge base '{kb_name}' not found.")
+                raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' not found.")
+        else:
+            logger.error("Knowledgebase name is required.")
+            raise ValueError("Knowledgebase name is required.")
 
     def query(self, kb_name: str, query_text: str, **kwargs: Any) -> Any:
         """
         Executes a query against the specified knowledge base synchronously,
         loading and applying its configuration.
         """
-        kb_logger = self._get_kb_logger(kb_name)
+        kb_logger = logging.getLogger(f"kbmcp.{kb_name}") # Get logger once for this method
         kb_logger.info(f"--- Executing synchronous query for KB: {kb_name} ---")
         try:
             # Get instance (get_rag_instance is now synchronous)
@@ -259,34 +217,15 @@ class RagManager:
             return result
 
         except (KnowledgeBaseNotFoundError, RAGInitializationError, ConfigurationError) as e:
-            kb_logger.error(f"Error preparing or executing query for KB '{kb_name}': {e}")
+            logging.getLogger(f"kbmcp.{kb_name}").error(f"Error preparing or executing query for KB '{kb_name}': {e}") # Use dynamic logger for exceptions too
             raise
         except Exception as e:
-            kb_logger.exception(f"Unexpected error during sync query execution for KB '{kb_name}': {e}")
+            logging.getLogger(f"kbmcp.{kb_name}").exception(f"Unexpected error during sync query execution for KB '{kb_name}': {e}")
             raise RAGManagerError(f"Sync query failed: {e}") from e
-
-    # --- Search Method (Placeholder) ---
-    async def search(self, kb_name: str, query: str):
-        # Placeholder - Implementation needed
-        logger.warning(f"search not fully implemented. Args: {kb_name}, {query}")
-        pass
-
-    def remove_rag_instance(self, kb_name: str | None = None) -> None:
-        """Removes a rag instance by name"""
-        if kb_name:
-            if kb_name in self._rag_instances:
-                del self._rag_instances[kb_name]
-                logger.info(f"Removed LightRAG instance for KB: {kb_name}")
-            else:
-                logger.error(f"Knowledge base '{kb_name}' not found.")
-                raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' not found.")
-        else:
-            logger.error("Knowledgebase name is required.")
-            raise ValueError("Knowledgebase name is required.")
 
     async def ingest_document(self, kb_name: str, file_path: Any, doc_id: Optional[str] = None) -> Optional[str]:
         """Ingests a document into the specified knowledge base."""
-        kb_logger = self._get_kb_logger(kb_name)
+        kb_logger = logging.getLogger(f"kbmcp.{kb_name}") # Get logger once for this method
         kb_logger.info(f"Ingesting document '{file_path.name}' into KB '{kb_name}'...")
         
         try:
@@ -307,12 +246,12 @@ class RagManager:
             return generated_doc_id
         
         except RAGInitializationError as e:
-            kb_logger.error(f"Cannot ingest, RAG instance failed to initialize: {e}")
+            logging.getLogger(f"kbmcp.{kb_name}").error(f"Cannot ingest, RAG instance failed to initialize: {e}") # Use dynamic logger for exceptions too
             raise # Re-raise the initialization error
         except FileNotFoundError:
-            kb_logger.error(f"Document file not found: {file_path}")
+            logging.getLogger(f"kbmcp.{kb_name}").error(f"Document file not found: {file_path}")
             raise
         except Exception as e:
-            kb_logger.exception(f"Failed to ingest document '{file_path.name}': {e}")
+            logging.getLogger(f"kbmcp.{kb_name}").exception(f"Failed to ingest document '{file_path.name}': {e}")
             # Consider wrapping in a specific IngestionError if needed
             raise RAGManagerError(f"Ingestion failed for '{file_path.name}': {e}") from e
