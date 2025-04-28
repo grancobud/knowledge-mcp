@@ -2,7 +2,7 @@
 
 ## 1. Overview and Concept
 
-**knowledge-mcp** is a Python tool designed to bridge the gap between specialized knowledge domains and AI assistants. It allows users to create, manage, and query dedicated knowledge bases, making this information accessible to AI agents through an MCP (Model Context Protocol) server interface.
+**knowledge-mcp** is a MCP server designed to bridge the gap between specialized knowledge domains and AI assistants. It allows users to create, manage, and query dedicated knowledge bases, making this information accessible to AI agents through an MCP (Model Context Protocol) server interface.
 
 The core idea is to empower AI assistants that are MCP clients (like Claude Desktop or IDEs like Windsurf) to proactively consult these specialized knowledge bases during their reasoning process (Chain of Thought), rather than relying solely on general semantic search against user prompts or broad web searches. This enables more accurate, context-aware responses when dealing with specific domains.
 
