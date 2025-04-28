@@ -125,6 +125,26 @@ class Shell(cmd.Cmd):
             logger.exception(f"Unexpected error in delete: {e}")
             print(f"An unexpected error occurred: {e}")
 
+    def do_list_kbs(self, arg):
+        """Lists all existing knowledge bases."""
+        if arg:
+            print("Usage: list_kbs (no arguments required)", file=self.stderr)
+            return
+        try:
+            kbs = self.kb_manager.list_kbs()
+            if not kbs:
+                print("No knowledge bases found.", file=self.stdout)
+            else:
+                print("Available Knowledge Bases:", file=self.stdout)
+                for kb_name in sorted(kbs):
+                    print(f"  - {kb_name}", file=self.stdout)
+        except KnowledgeBaseError as e:
+            print(f"Error listing knowledge bases: {e}", file=self.stderr)
+
+    def help_list_kbs(self):
+        print("Lists all existing knowledge base directories.", file=self.stdout)
+        print("Usage: list_kbs", file=self.stdout)
+
     # --- KB Config Management ---
 
     def do_config(self, arg: str):

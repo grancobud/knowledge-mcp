@@ -37,12 +37,11 @@ def run_serve_mode():
     mcp = MCP(rag_manager, kb_manager)
 
 
-def run_manage_mode():
-    """Runs the application in management mode."""
-    logger.info("Starting in manage mode...")
+def run_shell_mode():
+    """Runs the interactive management shell."""
+    logger.info("Starting in management shell...")
     kb_manager, rag_manager = initialize_components(Config.get_instance())
 
-    logger.info("Starting management shell...")
     # Instantiate and run the interactive shell
     shell = Shell(kb_manager, rag_manager) # Use the renamed Shell class
     try:
@@ -57,7 +56,7 @@ def run_manage_mode():
 
 def main():
     """Main entry point for the application."""
-    parser = argparse.ArgumentParser(description="Knowledge Base MCP Server and Management Tool")
+    parser = argparse.ArgumentParser(description="Knowledge Base MCP Server and Management Shell")
     parser.add_argument(
         "-c", "--config",
         type=str,
@@ -66,17 +65,17 @@ def main():
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True,
-                                       help='Available modes: serve, manage')
+                                       help='Available modes: serve, shell')
 
     # Serve command
     parser_serve = subparsers.add_parser("serve", help="Run the MCP server")
     # Add serve-specific arguments if needed later
     parser_serve.set_defaults(func=run_serve_mode)
 
-    # Manage command
-    parser_manage = subparsers.add_parser("manage", help="Run the interactive management shell")
-    # Add manage-specific arguments if needed later
-    parser_manage.set_defaults(func=run_manage_mode)
+    # Shell command
+    parser_shell = subparsers.add_parser("shell", help="Run the interactive management shell")
+    # Add shell-specific arguments if needed later
+    parser_shell.set_defaults(func=run_shell_mode)
 
     args = parser.parse_args()
 

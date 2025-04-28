@@ -2,13 +2,15 @@
 """FastMCP server exposing tools to interact with knowledge bases."""
 
 import logging
+import asyncio
+import json
 from typing import List, Optional, Any
 
 from pydantic import BaseModel, Field, field_validator
 from fastmcp import FastMCP
 
 # Import necessary exceptions and manager types
-from knowledge_mcp.knowledgebases import KnowledgeBaseManager, KnowledgeBaseNotFoundError # Added KbManager
+from knowledge_mcp.knowledgebases import KnowledgeBaseManager, KnowledgeBaseNotFoundError, KnowledgeBaseError # Added KbManager
 from knowledge_mcp.rag import ConfigurationError, RAGManagerError, RagManager
 
 logger = logging.getLogger(__name__)
@@ -84,6 +86,12 @@ class MCP:
             name="answer", 
             description="Generate an LLM-written answer using the chosen knowledge-base and return it with citations."
         )
+        self.mcp_server.add_tool(
+            self.list_knowledgebases,
+            name="list_knowledgebases",
+            description="List all available knowledge bases."
+            # No parameters needed, so no model specified
+        )
         self.mcp_server.run(transport="stdio")
         logger.info("MCP service initialized.")
 
@@ -144,3 +152,21 @@ class MCP:
             raise RuntimeError(f"An unexpected error occurred: {e}") from e
 
         return _wrap_result(answer)
+
+    async def list_knowledgebases(self) -> str:
+        """Lists all available knowledge base names."""
+        logger.info("Executing list_knowledgebases")
+        try:
+            # kb_manager.list_kbs is sync, run in thread
+            kb_list: List[str] = await asyncio.to_thread(self.kb_manager.list_kbs)
+            logger.info(f"Found knowledge bases: {kb_list}")
+            # Return as a JSON string list for structured output
+            return json.dumps(kb_list)
+        except KnowledgeBaseError as e:
+            logger.error(f"Error listing knowledge bases: {e}", exc_info=True)
+            # Use ValueError for user-facing errors expected by FastMCP
+            raise ValueError(f"Failed to list knowledge bases: {e}") from e
+        except Exception as e:
+            logger.exception(f"Unexpected error during list_knowledgebases: {e}")
+            # Use RuntimeError for internal server errors expected by FastMCP
+            raise RuntimeError(f"An unexpected server error occurred: {e}") from e
