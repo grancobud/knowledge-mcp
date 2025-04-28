@@ -29,21 +29,24 @@ By using LightRAG, `knowledge-mcp` benefits from advanced RAG capabilities that 
 
 Ensure you have Python 3.12 and `uv` installed.
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/olafgeibig/knowledge-mcp.git
-    cd knowledge-mcp
+1.  **Configure MCP Client:** To allow an MCP client (like Claude Desktop or Windsurf) to connect to this server, configure the client with the following settings. Replace the config path with the absolute path to your main `config.yaml`.
+    ```json
+    {
+      "mcpServers": {
+        "knowledge-mcp": {
+          "command": "uvx",
+          "args": [
+            "knowledge-mcp",
+            "--config",
+            "<absolute-path-to-your-config.yaml>",
+            "serve"
+          ]
+        }
+      }
+    }
     ```
 
-2.  **Create a virtual environment and install dependencies using uv:**
-    ```bash
-    python -m venv .venv
-    source .venv/bin/activate # Or .\.venv\Scripts\activate on Windows
-    uv pip install -e ".[dev]"
-    ```
-    *Installing with `-e .` makes the package editable and installs dev dependencies.* 
-
-3.  **Set up configuration:**
+2.  **Set up configuration:**
     *   Copy `config.example.yaml` to `config.yaml`.
     *   Copy `.env.example` to `.env`.
     *   Edit `config.yaml` and `.env` to add your API keys (e.g., `OPENAI_API_KEY`) and adjust paths or settings as needed. The `knowledge_base.base_dir` in `config.yaml` specifies where your knowledge base directories will be created.
@@ -56,25 +59,27 @@ The primary way to interact with `knowledge-mcp` is through its CLI, accessed vi
 
 ```bash
 knowledge-mcp --config config.yaml <command> [arguments...]
+# Or start the interactive shell:
+knowledge-mcp --config config.yaml shell
 ```
 
-**Available Commands:**
+**Available Commands (Interactive Shell):**
 
-| Command  | Description                                                                 | Arguments                                                                    | Status      |
-| :------- | :-------------------------------------------------------------------------- | :--------------------------------------------------------------------------- | :---------- |
-| `create` | Creates a new knowledge base directory and initializes its structure.       | `<kb-name>`: Name of the knowledge base to create.                           | Implemented |
-| `delete` | Deletes an existing knowledge base directory and all its contents.            | `<kb-name>`: Name of the knowledge base to delete.                           | Implemented |
-| `list`   | Lists all available knowledge bases found in the `base_dir`.                | N/A                                                                          | Implemented |
-| `add`    | Adds a document: processes, chunks, embeds, stores in the specified KB.     | `<kb-name>`: Target KB.<br>`<path>`: Path to the document file.             | Implemented |
-| `remove` | Removes a document and its associated embeddings from the KB.             | `<kb-name>`: Target KB.<br>`<doc_name>`: Name/ID of the document to remove. | Implemented |
-| `config` | Manages the KB-specific `config.yaml` (query parameters).                 | `<kb_name>`: Target KB.<br>`[show|edit]`: Subcommand (show default).        | Implemented |
-| `search` | Searches the specified knowledge base using LightRAG.                     | `<kb-name>`: Target KB.<br>`<query>`: Your search query text.              | Implemented |
-| `mcp`    | Runs the MCP server to expose the `search` functionality to AI agents.      | N/A                                                                          | Pending     |
-| `shell`  | Starts an interactive shell session with all commands available.            | N/A                                                                          | Implemented |
-| `exit`   | (Within shell) Exits the interactive shell.                                 | N/A                                                                          | Implemented |
-| `help`   | (Within shell) Shows available commands and their usage.                    | `[command]` (Optional command name)                                          | Implemented |
+| Command  | Description                                                                 | Arguments                                                                      |
+| :------- | :-------------------------------------------------------------------------- | :----------------------------------------------------------------------------- |
+| `create` | Creates a new knowledge base directory and initializes its structure.       | `<name>`: Name of the KB.<br> `["description"]`: Optional description.         |
+| `delete` | Deletes an existing knowledge base directory and all its contents.            | `<name>`: Name of the KB to delete.                                          |
+| `list`   | Lists all available knowledge bases and their descriptions.                 | N/A                                                                            |
+| `add`    | Adds a document: processes, chunks, embeds, stores in the specified KB.     | `<kb_name>`: Target KB.<br>`<file_path>`: Path to the document file.          |
+| `remove` | Removes a document and its associated data from the KB by its ID.           | `<kb_name>`: Target KB.<br>`<doc_id>`: ID of the document to remove.         |
+| `config` | Manages the KB-specific `config.yaml`. Shows content or opens in editor.    | `<kb_name>`: Target KB.<br>`[show|edit]`: Subcommand (show default).          |
+| `query`  | Searches the specified knowledge base using LightRAG.                     | `<kb_name>`: Target KB.<br>`<query_text>`: Your search query text.             |
+| `clear`  | Clears the terminal screen.                                                 | N/A                                                                            |
+| `exit`   | Exits the interactive shell.                                                | N/A                                                                            |
+| `EOF`    | (Ctrl+D) Exits the interactive shell.                                       | N/A                                                                            |
+| `help`   | Shows available commands and their usage within the shell.                  | `[command]` (Optional command name)                                            |
 
-**Example:**
+**Example (Direct CLI):**
 
 ```bash
 # Create a knowledge base named 'my_docs'
@@ -84,13 +89,13 @@ knowledge-mcp --config config.yaml create my_docs
 knowledge-mcp --config config.yaml add my_docs ./path/to/mydocument.pdf
 
 # Search the knowledge base
-knowledge-mcp --config config.yaml search my_docs "What is the main topic?"
+knowledge-mcp --config config.yaml query my_docs "What is the main topic?"
 
 # Start the interactive shell
 knowledge-mcp --config config.yaml shell
 
 (kbmcp) list
-(kbmcp) search my_docs "Another query"
+(kbmcp) query my_docs "Another query"
 (kbmcp) exit
 ```
 

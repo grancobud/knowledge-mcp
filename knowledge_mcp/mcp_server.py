@@ -4,6 +4,7 @@
 import logging
 # import asyncio # Removed unused import
 import json
+from textwrap import dedent
 from typing import List, Optional, Any, Dict
 
 from pydantic import BaseModel, Field, field_validator
@@ -25,7 +26,7 @@ class RetrieveParams(BaseModel):
     kb: str = Field(..., description="Knowledge base to query")
     question: str = Field(..., description="Natural-language query.")
     mode: str = Field("mix", description='Retrieval mode ("mix", "local", "global", "hybrid", "naive", "bypass") default: "mix"')
-    top_k: int = Field(30, ge=5, le=120, description="Number of query results to return (5-120).")
+    top_k: int = Field(30, ge=5, le=120, description="Number of query results to return (5-120). 40 is reasonable.")
     ids: Optional[List[str]] = Field(None, description="Restrict search to these document IDs.")
 
     @field_validator('mode')
@@ -40,7 +41,7 @@ class AnswerParams(BaseModel):
     kb: str = Field(..., description="Knowledge base to query.")
     question: str = Field(..., description="Natural-language question.")
     mode: str = Field("mix", description='Retrieval mode ("mix", "local", "global", "hybrid", "naive", "bypass") default: "mix".')
-    top_k: int = Field(30, ge=5, le=120, description="Number of query results to consider by the answer (5-120).")
+    top_k: int = Field(30, ge=5, le=120, description="Number of query results to consider by the answer (5-120). 40 is reasonable.")
     response_type: str = Field("Multiple Paragraphs", description='Answer style ("Multiple Paragraphs", "Single Paragraph", "Bullet Points").')
     ids: Optional[List[str]] = Field(None, description="Limit to specific document IDs.")
 
@@ -73,18 +74,26 @@ class MCP:
         self.kb_manager = kb_manager # Store kb_manager if needed for other tools
         self.mcp_server = FastMCP(
             title="Knowledge Base MCP",
-            description="Provides tools to search multiple custom knowledge bases.",
+            description=dedent("""
+            Provides tools to search multiple custom knowledge bases using similarity search and a ranked knowledge-graph. 
+            Retrieval modes: 
+            - local: Focuses on context-dependent information.
+            - global: Utilizes global knowledge.
+            - hybrid: Combines local and global retrieval methods.
+            - naive: Performs a basic search without advanced techniques.
+            - mix: Integrates knowledge graph and vector retrieval.
+            """),
             version="0.1.0",
         )
         self.mcp_server.add_tool(
             self.retrieve, 
             name="retrieve", 
-            description="Retrieve raw context passages from a knowledge-base without generating an LLM answer."
+            description="Give me the evidence only. Good when the client AI needs evidence for its own chain-of-thought or wish to cross-check multiple modes/top-k values cheaply. Retrieves raw context passages from a knowledge-base without generating an LLM answer. Client AI must generate the answer and that increases token volume for the client AI. Faster response, good for multiple queries."
         )
         self.mcp_server.add_tool(
             self.answer, 
             name="answer", 
-            description="Generate an LLM-written answer using the chosen knowledge-base and return it with citations."
+            description="Give me an LLM-synthesised answer that already cites its sources. Good when you want a concise answer in one call and when the server AI is better at understanding the matter. Uses the LLM of knowledgebase-mcp to generate an answer from a knowledge-base and return it with citations. Server AI must generate the answer and that increases token volume for this LLM. Good when the server AI is better at understanding the matter."
         )
         self.mcp_server.add_tool(
             self.list_knowledgebases,
