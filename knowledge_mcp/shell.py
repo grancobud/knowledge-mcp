@@ -7,7 +7,6 @@ from pathlib import Path
 import yaml
 import os
 import subprocess
-from typing import List
 
 from knowledge_mcp.knowledgebases import KnowledgeBaseManager, KnowledgeBaseExistsError, KnowledgeBaseNotFoundError, KnowledgeBaseError
 from knowledge_mcp.rag import RagManager, RAGInitializationError, ConfigurationError, RAGManagerError

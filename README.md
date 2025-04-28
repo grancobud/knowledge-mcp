@@ -156,15 +156,34 @@ knowledge-mcp --config config.yaml shell
 ```
 
 ## 6. Development
-
+1. Project Decisions
 *   **Tech Stack:** Python 3.12, uv (dependency management), hatchling (build system), pytest (testing).
 *   **Setup:** Follow the installation steps, ensuring you install with `uv pip install -e ".[dev]"`.
 *   **Code Style:** Adheres to PEP 8.
 *   **Testing:** Run tests using `uvx test` or `pytest`.
 *   **Dependencies:** Managed in `pyproject.toml`. Use `uv pip install <package>` to add and `uv pip uninstall <package>` to remove dependencies, updating `pyproject.toml` accordingly.
 *   **Scripts:** Common tasks might be defined under `[project.scripts]` in `pyproject.toml`.
-*   **MCP Inspector:** Use `npx @modelcontextprotocol/inspector uv run cli --config ./kbs/config.yaml serve` to start the MCP inspector.
+*   **Release:** Build `hatch build` and then `twine upload dist/*`.
 
-## 7. MCP Inspector
-
-Use `npx @modelcontextprotocol/inspector uvx knowledge-mcp --config ./kbs/config.yaml mcp` to start the MCP inspector.
+2. **Test with uvx**
+```
+    "knowledge-mcp": {
+      "command": "uvx",
+      "args": [
+        "--project",
+        "/path/to/knowledge-mcp",
+        "knowledge-mcp",
+        "--config",
+        "/path/to/knowledge-mcp/kbs/config.yaml",
+        "mcp"
+      ]
+    }
+```
+3. Test with MCP Inspector
+```
+npx @modelcontextprotocol/inspector uv run cli --config ./kbs/config.yaml mcp
+```
+or
+```
+npx @modelcontextprotocol/inspector uvx --project . knowledge-mcp --config ./kbs/config.yaml mcp
+```
