@@ -48,7 +48,7 @@ Ensure you have Python 3.12 and `uv` installed.
             "knowledge-mcp",
             "--config",
             "<absolute-path-to-your-config.yaml>",
-            "serve"
+            "mcp"
           ]
         }
       }
@@ -67,9 +67,8 @@ Configuration is managed via YAML files:
 1.  **Main Configuration (`config.yaml`):** Defines global settings like the knowledge base directory (`knowledge_base.base_dir`), LightRAG parameters (LLM provider/model, embedding provider/model, API keys via `${ENV_VAR}` substitution), and logging settings. Refer to `config.example.yaml` for the full structure and available options.
 
     ```yaml
-    # Example structure (see config.example.yaml for full details)
     knowledge_base:
-      base_dir: ./kbs # Default directory for KBs
+      base_dir: ./kbs
 
     lightrag:
       llm:
@@ -90,7 +89,7 @@ Configuration is managed via YAML files:
       level: "INFO"
       # ... logging settings
 
-    env_file: .env # Optional path to .env file
+    env_file: .env # path to .env file
     ```
 
 2.  **Knowledge Base Specific Configuration (`<base_dir>/<kb_name>/config.yaml`):** Contains parameters specific to querying *that* knowledge base, such as the LightRAG query `mode`, `top_k` results, context token limits, etc. This file is automatically created with defaults when a KB is created and can be viewed/edited using the `config` CLI command.
@@ -100,6 +99,7 @@ Configuration is managed via YAML files:
     ```
     <base_dir>/              # Main directory, contains a set of knowledge bases
     ├── config.yaml          # Main application configuration (copied from config.example.yaml)
+    ├── .env                 # Environment variables referenced in config.yaml
     ├── kbmcp.log
     ├── knowledge_base_1/    # Directory for the first KB
     │   ├── config.yaml      # KB-specific configuration (query parameters)
@@ -116,8 +116,6 @@ The primary way to interact with `knowledge-mcp` is through its CLI, accessed vi
 **All commands require the `--config` option pointing to your main configuration file.**
 
 ```bash
-knowledge-mcp --config config.yaml <command> [arguments...]
-# Or start the interactive shell:
 knowledge-mcp --config config.yaml shell
 ```
 

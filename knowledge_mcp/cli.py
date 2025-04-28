@@ -1,10 +1,7 @@
-# /Users/olaf/work/projects/knowledge-mcp/knowledge_mcp/cli.py
 import argparse
 import logging
 import logging.config
 import sys
-from pathlib import Path
-import uvicorn  # Keep for potential future server use # noqa: F401
 
 # Updated relative imports
 from knowledge_mcp.config import Config
@@ -13,10 +10,7 @@ from knowledge_mcp.rag import RagManager # Updated module name
 from knowledge_mcp.shell import Shell # Updated module and class name
 from knowledge_mcp.mcp_server import MCP # Import class and mcp instance
 
-# Configure basic logging
-# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
 
 def initialize_components(config: Config) -> tuple[KnowledgeBaseManager, RagManager]:
     """Initialize and return manager instances."""
@@ -26,7 +20,7 @@ def initialize_components(config: Config) -> tuple[KnowledgeBaseManager, RagMana
     logger.info("Components initialized.")
     return kb_manager, rag_manager
 
-def run_serve_mode():
+def run_mcp_mode():
     """Runs the application in server mode."""
     logger.info("Starting in serve mode...")
     config = Config.get_instance() # Get the loaded config
@@ -64,17 +58,14 @@ def main():
         help="Path to the configuration file (default: config.yml)",
     )
 
-    subparsers = parser.add_subparsers(dest="command", required=True,
-                                       help='Available modes: serve, shell')
+    subparsers = parser.add_subparsers(dest="command", required=True, help='Available modes: mcp, shell')
 
-    # Serve command
-    parser_serve = subparsers.add_parser("serve", help="Run the MCP server")
-    # Add serve-specific arguments if needed later
-    parser_serve.set_defaults(func=run_serve_mode)
+    # MCP command
+    parser_mcp = subparsers.add_parser("mcp", help="Run the MCP server")
+    parser_mcp.set_defaults(func=run_mcp_mode)
 
     # Shell command
     parser_shell = subparsers.add_parser("shell", help="Run the interactive management shell")
-    # Add shell-specific arguments if needed later
     parser_shell.set_defaults(func=run_shell_mode)
 
     args = parser.parse_args()
