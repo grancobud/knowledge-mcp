@@ -29,7 +29,16 @@ By using LightRAG, `knowledge-mcp` benefits from advanced RAG capabilities that 
 
 Ensure you have Python 3.12 and `uv` installed.
 
-1.  **Configure MCP Client:** To allow an MCP client (like Claude Desktop or Windsurf) to connect to this server, configure the client with the following settings. Replace the config path with the absolute path to your main `config.yaml`.
+1.  **Running the Tool:** After installing the package (e.g., using `uv pip install -e .`), you can run the CLI using `uvx`:
+    ```bash
+    # General command structure
+    uvx knowledge-mcp --config <path-to-your-config.yaml> <command> [arguments...]
+
+    # Example: Start interactive shell
+    uvx knowledge-mcp --config <path-to-your-config.yaml> shell
+    ```
+
+2.  **Configure MCP Client:** To allow an MCP client (like Claude Desktop or Windsurf) to connect to this server, configure the client with the following settings. Replace the config path with the absolute path to your main `config.yaml`.
     ```json
     {
       "mcpServers": {
@@ -46,12 +55,61 @@ Ensure you have Python 3.12 and `uv` installed.
     }
     ```
 
-2.  **Set up configuration:**
+3.  **Set up configuration:**
     *   Copy `config.example.yaml` to `config.yaml`.
     *   Copy `.env.example` to `.env`.
     *   Edit `config.yaml` and `.env` to add your API keys (e.g., `OPENAI_API_KEY`) and adjust paths or settings as needed. The `knowledge_base.base_dir` in `config.yaml` specifies where your knowledge base directories will be created.
 
-## 4. Usage (CLI)
+## 4. Configuration
+
+Configuration is managed via YAML files:
+
+1.  **Main Configuration (`config.yaml`):** Defines global settings like the knowledge base directory (`knowledge_base.base_dir`), LightRAG parameters (LLM provider/model, embedding provider/model, API keys via `${ENV_VAR}` substitution), and logging settings. Refer to `config.example.yaml` for the full structure and available options.
+
+    ```yaml
+    # Example structure (see config.example.yaml for full details)
+    knowledge_base:
+      base_dir: ./kbs # Default directory for KBs
+
+    lightrag:
+      llm:
+        provider: "openai"
+        model_name: "gpt-4.1-nano"
+        api_key: "${OPENAI_API_KEY}"
+        # ... other LLM settings
+      embedding:
+        provider: "openai"
+        model_name: "text-embedding-3-small"
+        api_key: "${OPENAI_API_KEY}"
+        # ... other embedding settings
+      embedding_cache:
+        enabled: true
+        similarity_threshold: 0.90
+
+    logging:
+      level: "INFO"
+      # ... logging settings
+
+    env_file: .env # Optional path to .env file
+    ```
+
+2.  **Knowledge Base Specific Configuration (`<base_dir>/<kb_name>/config.yaml`):** Contains parameters specific to querying *that* knowledge base, such as the LightRAG query `mode`, `top_k` results, context token limits, etc. This file is automatically created with defaults when a KB is created and can be viewed/edited using the `config` CLI command.
+
+3.  **Knowledge Base Directory Structure:** When you create knowledge bases, they are stored within the directory specified by `knowledge_base.base_dir` in your main `config.yaml`. The structure typically looks like this:
+
+    ```
+    <base_dir>/              # Main directory, contains a set of knowledge bases
+    ├── config.yaml          # Main application configuration (copied from config.example.yaml)
+    ├── kbmcp.log
+    ├── knowledge_base_1/    # Directory for the first KB
+    │   ├── config.yaml      # KB-specific configuration (query parameters)
+    │   ├── <storage_files>  # The LightRAG storage files
+    └── knowledge_base_2/    # Directory for the second KB
+        ├── config.yaml
+        ├── <storage_files>
+    ```
+
+## 5. Usage (CLI)
 
 The primary way to interact with `knowledge-mcp` is through its CLI, accessed via the `knowledge-mcp` command (if installed globally or via `uvx knowledge-mcp` within the activated venv).
 
@@ -99,41 +157,6 @@ knowledge-mcp --config config.yaml shell
 (kbmcp) exit
 ```
 
-## 5. Configuration
-
-Configuration is managed via YAML files:
-
-*   **Main Configuration (`config.yaml`):** Defines global settings like the knowledge base directory (`knowledge_base.base_dir`), LightRAG parameters (LLM provider/model, embedding provider/model, API keys via `${ENV_VAR}` substitution), and logging settings.
-
-    ```yaml
-    # Example structure (see config.example.yaml for full details)
-    knowledge_base:
-      base_dir: ./kbs # Default directory for KBs
-
-    lightrag:
-      llm:
-        provider: "openai"
-        model_name: "gpt-4.1-nano"
-        api_key: "${OPENAI_API_KEY}"
-        # ... other LLM settings
-      embedding:
-        provider: "openai"
-        model_name: "text-embedding-3-small"
-        api_key: "${OPENAI_API_KEY}"
-        # ... other embedding settings
-      embedding_cache:
-        enabled: true
-        similarity_threshold: 0.90
-
-    logging:
-      level: "INFO"
-      # ... logging settings
-
-    env_file: .env # Optional path to .env file
-    ```
-
-*   **Knowledge Base Specific Configuration (`<base_dir>/<kb_name>/config.yaml`):** Contains parameters specific to querying *that* knowledge base, such as the LightRAG query `mode`, `top_k` results, context token limits, etc. This file is automatically created with defaults when a KB is created and can be viewed/edited using the `config` CLI command.
-
 ## 6. Development
 
 *   **Tech Stack:** Python 3.12, uv (dependency management), hatchling (build system), pytest (testing).
@@ -143,3 +166,7 @@ Configuration is managed via YAML files:
 *   **Dependencies:** Managed in `pyproject.toml`. Use `uv pip install <package>` to add and `uv pip uninstall <package>` to remove dependencies, updating `pyproject.toml` accordingly.
 *   **Scripts:** Common tasks might be defined under `[project.scripts]` in `pyproject.toml`.
 *   **MCP Inspector:** Use `npx @modelcontextprotocol/inspector uv run cli --config ./kbs/config.yaml serve` to start the MCP inspector.
+
+## 7. MCP Inspector
+
+Use `npx @modelcontextprotocol/inspector uvx knowledge-mcp --config ./kbs/config.yaml serve` to start the MCP inspector.
