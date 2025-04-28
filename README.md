@@ -167,4 +167,4 @@ knowledge-mcp --config config.yaml shell
 
 ## 7. MCP Inspector
 
-Use `npx @modelcontextprotocol/inspector uvx knowledge-mcp --config ./kbs/config.yaml serve` to start the MCP inspector.
+Use `npx @modelcontextprotocol/inspector uvx knowledge-mcp --config ./kbs/config.yaml mcp` to start the MCP inspector.

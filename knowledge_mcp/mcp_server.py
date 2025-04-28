@@ -73,8 +73,8 @@ class MCP:
         self.rag_manager = rag_manager
         self.kb_manager = kb_manager # Store kb_manager if needed for other tools
         self.mcp_server = FastMCP(
-            title="Knowledge Base MCP",
-            description=dedent("""
+            name="Knowledge Base MCP",
+            instructions=dedent("""
             Provides tools to search multiple custom knowledge bases using similarity search and a ranked knowledge-graph. 
             Retrieval modes: 
             - local: Focuses on context-dependent information.
@@ -83,7 +83,6 @@ class MCP:
             - naive: Performs a basic search without advanced techniques.
             - mix: Integrates knowledge graph and vector retrieval.
             """),
-            version="0.1.0",
         )
         self.mcp_server.add_tool(
             self.retrieve, 
