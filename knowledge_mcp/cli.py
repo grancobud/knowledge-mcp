@@ -5,13 +5,13 @@ import logging.config
 import sys
 from pathlib import Path
 import uvicorn  # Keep for potential future server use # noqa: F401
-import time     # Keep for placeholder serve mode
 
 # Updated relative imports
 from knowledge_mcp.config import Config
 from knowledge_mcp.knowledgebases import KnowledgeBaseManager # Updated module name
 from knowledge_mcp.rag import RagManager # Updated module name
 from knowledge_mcp.shell import Shell # Updated module and class name
+from knowledge_mcp.mcp_server import MCP # Import class and mcp instance
 
 # Configure basic logging
 # logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -29,29 +29,18 @@ def initialize_components(config: Config) -> tuple[KnowledgeBaseManager, RagMana
 def run_serve_mode():
     """Runs the application in server mode."""
     logger.info("Starting in serve mode...")
-    kb_manager, rag_manager = initialize_components(Config.get_instance())
-    # Placeholder for starting the FastMCP server
-    logger.info("Starting FastMCP server...")
-    # Example: await run_server(kb_manager, rag_manager, config)
-    print("MCP Server running (placeholder)... Press Ctrl+C to exit.")
-    # Keep running or use uvicorn/hypercorn to run the server
-    # For now, just keeps the process alive conceptually
-    try:
-        # Simulate server running
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Server stopped.")
+    config = Config.get_instance() # Get the loaded config
+    kb_manager, rag_manager = initialize_components(config)
+    
+    # Instantiate the MCP service class
+    logger.info("Instantiating KnowledgeMCP service...")
+    mcp = MCP(rag_manager, kb_manager)
+
 
 def run_manage_mode():
     """Runs the application in management mode."""
     logger.info("Starting in manage mode...")
     kb_manager, rag_manager = initialize_components(Config.get_instance())
-
-    # Placeholder for starting the FastMCP server in the background
-    logger.info("Starting FastMCP server in background (placeholder)...")
-    # Example: asyncio.create_task(run_server(kb_manager, rag_manager, config))
-    # Or use threading
 
     logger.info("Starting management shell...")
     # Instantiate and run the interactive shell
@@ -92,7 +81,9 @@ def main():
     args = parser.parse_args()
 
     # Load config - config path might need adjustment depending on CWD
-    # If cli.py is run via `python -m knowledge_mcp.cli`, paths relative to project root might be okay.
+    # If config is expected relative to project root, and cli.py is in the package,
+    # we might need to adjust how the default path is handled or make it absolute.
+    # For now, assume it's run from project root or path is absolute.
     try:
         # If config is expected relative to project root, and cli.py is in the package,
         # we might need to adjust how the default path is handled or make it absolute.

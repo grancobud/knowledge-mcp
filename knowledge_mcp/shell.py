@@ -270,7 +270,7 @@ class Shell(cmd.Cmd):
 
         try:
             # Call the synchronous query method directly, passing kwargs
-            result = self.rag_manager.query(kb_name, query_text)
+            result = asyncio.run(self.rag_manager.query(kb_name, query_text))
             print(" [done]", file=self.stdout) # Indicate completion
             print("\n--- Query Result ---", file=self.stdout)
             print(result, file=self.stdout) # result should already be a string or printable

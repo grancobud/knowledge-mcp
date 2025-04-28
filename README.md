@@ -137,3 +137,4 @@ Configuration is managed via YAML files:
 *   **Testing:** Run tests using `uvx test` or `pytest`.
 *   **Dependencies:** Managed in `pyproject.toml`. Use `uv pip install <package>` to add and `uv pip uninstall <package>` to remove dependencies, updating `pyproject.toml` accordingly.
 *   **Scripts:** Common tasks might be defined under `[project.scripts]` in `pyproject.toml`.
+*   **MCP Inspector:** Use `npx @modelcontextprotocol/inspector uv run cli --config ./kbs/config.yaml serve` to start the MCP inspector.

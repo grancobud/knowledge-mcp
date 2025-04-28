@@ -38,30 +38,28 @@ class RagManager:
         self.config = config # Store config if needed for global defaults
         logger.info("RagManager initialized.") 
 
-    def get_rag_instance(self, kb_name: str) -> LightRAG:
+    async def get_rag_instance(self, kb_name: str) -> LightRAG:
         """
         Retrieves or creates and initializes a LightRAG instance for the given KB.
-        Synchronous access, but uses asyncio.run() internally if creation needed.
+        Asynchronous access.
         """
         if kb_name in self._rag_instances:
             logging.getLogger(f"kbmcp.{kb_name}").info("Returning cached LightRAG instance.")
             return self._rag_instances[kb_name]
         else:
             if self.kb_manager.kb_exists(kb_name):
-                # Call the async creation method using asyncio.run()
+                # Call the async creation method directly
                 logging.getLogger(f"kbmcp.{kb_name}").info("No cached instance found. Running async create_rag_instance...")
-                # This will block the current synchronous thread until create_rag_instance completes.
-                # Be mindful of potential nested asyncio.run() calls if create_rag_instance
-                # itself calls other functions that use asyncio.run().
+                # Now awaits the async creation method directly
                 try:
-                    return asyncio.run(self.create_rag_instance(kb_name))
+                    instance = await self.create_rag_instance(kb_name)
+                    self._rag_instances[kb_name] = instance # Cache after successful creation
+                    return instance
                 except RuntimeError as e:
-                    # Handle potential nested asyncio.run errors if they occur
-                    if "cannot be called from a running event loop" in str(e):
-                        logging.getLogger(f"kbmcp.{kb_name}").error("Detected nested asyncio.run() call attempt during RAG instance creation.")
-                        raise RAGInitializationError("Cannot create RAG instance from within a running event loop via sync get_rag_instance.") from e
-                    else:
-                        raise # Re-raise other runtime errors
+                    # Handle potential asyncio errors if create_rag_instance has issues
+                    logging.getLogger(f"kbmcp.{kb_name}").error(f"Error during async RAG instance creation: {e}")
+                    raise RAGInitializationError(f"Async RAG instance creation failed for {kb_name}") from e
+                    # No longer need the nested asyncio.run check
             else:
                 raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' does not exist.")
     
@@ -174,16 +172,16 @@ class RagManager:
             logger.error("Knowledgebase name is required.")
             raise ValueError("Knowledgebase name is required.")
 
-    def query(self, kb_name: str, query_text: str, **kwargs: Any) -> Any:
+    async def query(self, kb_name: str, query_text: str, **kwargs: Any) -> Any:
         """
-        Executes a query against the specified knowledge base synchronously,
-        loading and applying its configuration.
+        Executes a query against the specified knowledge base asynchronously,
+        loading and applying its configuration, and running sync LightRAG calls in a thread.
         """
         kb_logger = logging.getLogger(f"kbmcp.{kb_name}") # Get logger once for this method
-        kb_logger.info(f"--- Executing synchronous query for KB: {kb_name} ---")
+        kb_logger.info(f"--- Executing asynchronous query for KB: {kb_name} ---")
         try:
-            # Get instance (get_rag_instance is now synchronous)
-            rag_instance = self.get_rag_instance(kb_name)
+            # Get instance asynchronously
+            rag_instance = await self.get_rag_instance(kb_name)
             kb_path = self.kb_manager.get_kb_path(kb_name)
 
             # Load KB-specific configuration
@@ -210,18 +208,22 @@ class RagManager:
                 raise ConfigurationError(f"Invalid query parameters: {e}") from e
 
             # Execute the query using the underlying LightRAG instance
-            # IMPORTANT: Assumes rag_instance.query can be called SYNCHRONOUSLY
-            # If LightRAG's query is inherently async, this will fail or block unexpectedly.
-            result = rag_instance.query(query=query_text, param=query_param_instance)
-            kb_logger.info(f"Sync query call to LightRAG successful for '{kb_name}'.")
+            # IMPORTANT: Assumes rag_instance.query is SYNCHRONOUS.
+            # Running the synchronous LightRAG query in a separate thread.
+            result = await asyncio.to_thread(
+                rag_instance.query, 
+                query=query_text, 
+                param=query_param_instance
+            )
+            kb_logger.info(f"Async query wrapper successful for '{kb_name}'.")
             return result
 
         except (KnowledgeBaseNotFoundError, RAGInitializationError, ConfigurationError) as e:
             logging.getLogger(f"kbmcp.{kb_name}").error(f"Error preparing or executing query for KB '{kb_name}': {e}") # Use dynamic logger for exceptions too
             raise
         except Exception as e:
-            logging.getLogger(f"kbmcp.{kb_name}").exception(f"Unexpected error during sync query execution for KB '{kb_name}': {e}")
-            raise RAGManagerError(f"Sync query failed: {e}") from e
+            logging.getLogger(f"kbmcp.{kb_name}").exception(f"Unexpected error during async query execution for KB '{kb_name}': {e}")
+            raise RAGManagerError(f"Async query failed: {e}") from e
 
     async def ingest_document(self, kb_name: str, file_path: Any, doc_id: Optional[str] = None) -> Optional[str]:
         """Ingests a document into the specified knowledge base."""
@@ -229,15 +231,18 @@ class RagManager:
         kb_logger.info(f"Ingesting document '{file_path.name}' into KB '{kb_name}'...")
         
         try:
-            # Get instance (get_rag_instance is now synchronous)
-            rag_instance = self.get_rag_instance(kb_name)
+            # Get instance asynchronously
+            rag_instance = await self.get_rag_instance(kb_name)
             
-            # Use LightRAG's ingest_doc method
+            # Use LightRAG's ingest_doc method - Run synchronous ingest_doc in a thread
             # Check LightRAG docs for exact parameters and return value
-            # Assuming it takes file path and optional doc_id
-            # result = await rag_instance.ingest_doc(doc_path=str(file_path), doc_id=doc_id)
-            # Simplified call for now, assuming file path is enough
-            await rag_instance.ingest_doc(doc_path=str(file_path))
+            kb_logger.debug(f"Running ingest_doc for {file_path} in thread...")
+            await asyncio.to_thread(
+                rag_instance.ingest_doc, 
+                doc_path=str(file_path)
+                # Pass doc_id if the underlying method supports it and it's needed:
+                # , doc_id=doc_id 
+            )
             
             # Assuming ingest_doc doesn't directly return a useful ID in this version
             # We might need to generate/manage IDs separately if required.

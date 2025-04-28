@@ -33,7 +33,7 @@ Homepage = "https://github.com/olafgeibig/knowledge-mcp"
 Repository = "https://github.com/olafgeibig/knowledge-mcp"
 
 [project.scripts]
-knowledge-mcp = "knowledge_mcp.cli:main"
+cli = "knowledge_mcp.cli:main"
 test = "pytest:main"
 
 [build-system]
