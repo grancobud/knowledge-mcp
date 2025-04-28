@@ -230,12 +230,12 @@ class Shell(cmd.Cmd):
             logger.exception(f"Unexpected error in add: {e}")
             print(f"An unexpected error occurred: {e}")
 
-    def do_remove_doc(self, arg: str):
-        """Remove a document from a knowledge base by its ID. Usage: remove_doc <kb_name> <doc_id>"""
+    def do_remove(self, arg: str):
+        """Remove a document from a knowledge base by its ID. Usage: remove <kb_name> <doc_id>"""
         try:
             args = shlex.split(arg)
             if len(args) != 2:
-                print("Usage: remove_doc <kb_name> <doc_id>")
+                print("Usage: remove <kb_name> <doc_id>")
                 return
 
             kb_name = args[0]
@@ -250,7 +250,7 @@ class Shell(cmd.Cmd):
         except KnowledgeBaseNotFoundError:
             print(f"Error: Knowledge base '{kb_name}' not found.")
         except Exception as e:
-             logger.exception(f"Unexpected error in remove_doc: {e}")
+             logger.exception(f"Unexpected error in remove: {e}")
              print(f"An unexpected error occurred: {e}")
 
     # --- Query Commands --- 
