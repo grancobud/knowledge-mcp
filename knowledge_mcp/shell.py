@@ -245,7 +245,7 @@ class Shell(cmd.Cmd):
                 return
 
             print(f"Adding document '{file_path.name}' to KB '{kb_name}'...")
-            added_doc_id = self.document_manager.add(file_path, kb_name)
+            added_doc_id = asyncio.run(self.document_manager.add(file_path, kb_name))
             print(f"Document added successfully with ID: {added_doc_id}")
 
         except KnowledgeBaseNotFoundError:

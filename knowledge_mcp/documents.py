@@ -10,6 +10,14 @@ logger = logging.getLogger(__name__)
 # Define supported extensions explicitly if needed, otherwise rely on textract
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".rtf", ".xlsx", ".pptx", ".html", ".htm", ".eml", ".msg"}
 
+# Define common text file extensions
+TEXT_EXTENSIONS = {
+    ".txt", ".md", ".py", ".json", ".yaml", ".yml", 
+    ".toml", ".csv", ".log", ".ini", ".cfg", ".rst",
+    ".html", ".htm", ".xml", ".js", ".ts", ".css", ".scss",
+    ".sh", ".bash", ".zsh", ".ps1", ".bat" 
+}
+
 class DocumentManagerError(Exception):
     """Base exception for document management errors."""
 
@@ -88,8 +96,43 @@ class DocumentManager:
             logger.exception(msg)
             raise DocumentManagerError(msg) from e
 
-        text_content = self._extract_text(doc_path)
-        
+        # Determine how to get text content based on file type
+        file_extension = doc_path.suffix.lower()
+        text_content = ""
+
+        if file_extension in TEXT_EXTENSIONS:
+            logger.info(f"Reading text content directly from {doc_path}...")
+            try:
+                # Read as text, handle potential encoding issues
+                with open(doc_path, "r", encoding="utf-8") as f:
+                    text_content = f.read()
+            except UnicodeDecodeError:
+                logger.warning(f"UTF-8 decoding failed for {doc_path}. Trying latin-1.")
+                try:
+                    with open(doc_path, "r", encoding="latin-1") as f:
+                        text_content = f.read()
+                except Exception as e:
+                    msg = f"Failed to read text file {doc_path} with latin-1: {e}"
+                    logger.exception(msg)
+                    # Raise specific error or handle as needed
+                    raise DocumentProcessingError(msg) from e
+            except Exception as e:
+                msg = f"Failed to read text file {doc_path}: {e}"
+                logger.exception(msg)
+                raise DocumentProcessingError(msg) from e
+        else:
+            logger.info(f"Using textract to extract content from {doc_path}...")
+            try:
+                text_content = self._extract_text(doc_path)
+            except (TextExtractionError, UnsupportedFileTypeError) as e:
+                 # Log the specific error from _extract_text and re-raise
+                 logger.error(f"Extraction failed for {doc_path}: {e}")
+                 raise # Re-raise the caught exception
+            except Exception as e:
+                # Catch any other unexpected errors during extraction
+                msg = f"Unexpected error during text extraction for {doc_path}: {e}"
+                logger.exception(msg)
+                raise DocumentProcessingError(msg) from e
 
         if text_content: # Ensure there is content to ingest
             logger.info(f"Ingesting content from {doc_path} into KB '{kb_name}'...")
