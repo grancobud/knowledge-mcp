@@ -5,7 +5,7 @@ import logging
 # import asyncio # Removed unused import
 import json
 from textwrap import dedent
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Annotated
 
 from pydantic import BaseModel, Field, field_validator
 from fastmcp import FastMCP
@@ -21,47 +21,6 @@ def _wrap_result(result: Any) -> str:
     """Simple wrapper to ensure string output, can be enhanced."""
     return str(result)
 
-# --- Pydantic Models for Tool Parameters (remain at module level) ---
-class RetrieveParams(BaseModel):
-    kb: str = Field(..., description="Knowledge base to query")
-    question: str = Field(..., description="Natural-language query.")
-    mode: str = Field("mix", description='Retrieval mode ("mix", "local", "global", "hybrid", "naive", "bypass") default: "mix"')
-    top_k: int = Field(30, ge=5, le=120, description="Number of query results to return (5-120). 40 is reasonable.")
-    ids: Optional[List[str]] = Field(None, description="Restrict search to these document IDs.")
-
-    @field_validator('mode')
-    @classmethod
-    def validate_mode(cls, v: str) -> str:
-        allowed_modes = {"mix", "local", "global", "hybrid", "naive", "bypass"}
-        if v not in allowed_modes:
-            raise ValueError(f"Invalid mode '{v}'. Must be one of {allowed_modes}")
-        return v
-
-class AnswerParams(BaseModel):
-    kb: str = Field(..., description="Knowledge base to query.")
-    question: str = Field(..., description="Natural-language question.")
-    mode: str = Field("mix", description='Retrieval mode ("mix", "local", "global", "hybrid", "naive", "bypass") default: "mix".')
-    top_k: int = Field(30, ge=5, le=120, description="Number of query results to consider by the answer (5-120). 40 is reasonable.")
-    response_type: str = Field("Multiple Paragraphs", description='Answer style ("Multiple Paragraphs", "Single Paragraph", "Bullet Points").')
-    ids: Optional[List[str]] = Field(None, description="Limit to specific document IDs.")
-
-    @field_validator('mode')
-    @classmethod
-    def validate_mode(cls, v: str) -> str:
-        allowed_modes = {"mix", "local", "global", "hybrid", "naive", "bypass"}
-        if v not in allowed_modes:
-            raise ValueError(f"Invalid mode '{v}'. Must be one of {allowed_modes}")
-        return v
-
-    @field_validator('response_type')
-    @classmethod
-    def validate_response_type(cls, v: str) -> str:
-        allowed_types = {"Multiple Paragraphs", "Single Paragraph", "Bullet Points"}
-        if v not in allowed_types:
-            raise ValueError(f"Invalid response_type '{v}'. Must be one of {allowed_types}")
-        return v
-
-
 # --- Knowledge MCP Service Class ---
 class MCP:
     """Encapsulates MCP tools for knowledge base interaction."""
@@ -75,8 +34,8 @@ class MCP:
         self.mcp_server = FastMCP(
             name="Knowledge Base MCP",
             instructions=dedent("""
-            Provides tools to search multiple custom knowledge bases using similarity search and a ranked knowledge-graph. 
-            Retrieval modes: 
+            Tools to query multiple custom knowledge bases using similarity search and a ranked knowledge-graph. 
+            Search modes: 
             - local: Focuses on context-dependent information.
             - global: Utilizes global knowledge.
             - hybrid: Combines local and global retrieval methods.
@@ -87,12 +46,12 @@ class MCP:
         self.mcp_server.add_tool(
             self.retrieve, 
             name="retrieve", 
-            description="Give me the evidence only. Good when the client AI needs evidence for its own chain-of-thought or wish to cross-check multiple modes/top-k values cheaply. Retrieves raw context passages from a knowledge-base without generating an LLM answer. Client AI must generate the answer and that increases token volume for the client AI. Faster response, good for multiple queries."
+            description="Returns the retrieval results only. Good when the client AI needs evidence for its own chain-of-thought or wish to cross-check multiple modes/top-k values cheaply. Retrieves raw context passages from a knowledge base without synthesizing an LLM answer. Client AI must generate the answer and that increases token volume for the client AI. Faster response, good for multiple queries."
         )
         self.mcp_server.add_tool(
             self.answer, 
             name="answer", 
-            description="Give me an LLM-synthesised answer that already cites its sources. Good when you want a concise answer in one call and when the server AI is better at understanding the matter. Uses the LLM of knowledgebase-mcp to generate an answer from a knowledge-base and return it with citations. Server AI must generate the answer and that increases token volume for this LLM. Good when the server AI is better at understanding the matter."
+            description="Returns an LLM-synthesised answer from the retrieval results. Good when you want a concise answer in one call. Uses the LLM of the mcp server to generate an answer from a knowledge base and return it with citations. Server AI must generate the answer and that increases token volume for this LLM."
         )
         self.mcp_server.add_tool(
             self.list_knowledgebases,
@@ -103,60 +62,71 @@ class MCP:
         self.mcp_server.run(transport="stdio")
         logger.info("MCP service initialized.")
 
-    async def retrieve(self, params: RetrieveParams) -> str:
+    async def retrieve(self,
+        kb: Annotated[str, Field(description="Knowledge base to query")],
+        query: Annotated[str, Field(description="Natural-language query.")],
+        mode: Annotated[str, Field("mix", description='Retrieval mode ("mix", "local", "global", "hybrid", "naive", "bypass") default: "mix"')],
+        top_k: Annotated[int, Field(30, ge=5, le=120, description="Number of query results to return (5-120). 40 is reasonable.")],
+        ids: Annotated[Optional[List[str]], Field(None, description="Restrict search to these document IDs.")],
+    ) -> str:
         """
         Retrieve raw context passages from a knowledge‑base without generating an LLM answer.
         """
-        logger.info(f"Executing kb_retrieve for KB '{params.kb}' with query: '{params.question[:50]}...' Mode: {params.mode}, TopK: {params.top_k}")
+        logger.info(f"Executing retrieve for KB '{kb}'")
         # Prepare kwargs for rag_manager.query
-        query_kwargs = params.model_dump(exclude={'kb', 'question'}, exclude_none=True)
+        query_kwargs = {'mode': mode, 'top_k': top_k, 'ids': ids}
         query_kwargs['only_need_context'] = True
         
         try:
             # Call the now async query method
             context_result: str = await self.rag_manager.query(
-                kb_name=params.kb,
-                query_text=params.question,
+                kb_name=kb,
+                query_text=query,
                 **query_kwargs
             )
-            logger.info(f"Successfully retrieved context for KB '{params.kb}'. Length: {len(context_result)}")
         except (KnowledgeBaseNotFoundError, ConfigurationError) as e:
-            logger.warning(f"Configuration or KB not found error during kb_retrieve for '{params.kb}': {e}")
+            logger.error(f"Configuration or KB not found error during retrieve for '{kb}': {e}")
             raise ValueError(str(e)) from e # FastMCP expects ValueError for user input/config issues
         except RAGManagerError as e:
-            logger.error(f"Runtime RAG error during kb_retrieve for '{params.kb}': {e}", exc_info=True)
+            logger.error(f"Runtime RAG error during retrieve for '{kb}': {e}", exc_info=True)
             raise RuntimeError(f"Query failed: {e}") from e # FastMCP expects RuntimeError for internal server errors
         except Exception as e:
-            logger.exception(f"Unexpected error during kb_retrieve for '{params.kb}': {e}")
+            logger.exception(f"Unexpected error during kb_retrieve for '{kb}': {e}")
             raise RuntimeError(f"An unexpected error occurred: {e}") from e
 
         return _wrap_result(context_result)
 
-    async def answer(self, params: AnswerParams) -> str:
+    async def answer(self, 
+        kb: Annotated[str, Field(description="Knowledge base to query")],
+        query: Annotated[str, Field(description="Natural-language query.")],
+        mode: Annotated[str, Field("mix", description='Retrieval mode ("mix", "local", "global", "hybrid", "naive", "bypass") default: "mix"')],
+        top_k: Annotated[int, Field(30, ge=5, le=120, description="Number of query results to return (5-120). 40 is reasonable.")],
+        response_type: Annotated[str, Field("Multiple Paragraphs", description='Answer style ("Multiple Paragraphs", "Single Paragraph", "Bullet Points").')],
+        ids: Annotated[Optional[List[str]], Field(None, description="Restrict search to these document IDs.")],
+    ) -> str:
         """
         Generate an LLM‑written answer using the chosen knowledge‑base and return it with citations.
         """
-        logger.info(f"Executing kb_answer for KB '{params.kb}' with query: '{params.question[:50]}...' Mode: {params.mode}, TopK: {params.top_k}, Type: {params.response_type}")
+        logger.info(f"Executing answer for KB '{kb}'")
         # Prepare kwargs for rag_manager.query
-        query_kwargs = params.model_dump(exclude={'kb', 'question'}, exclude_none=True)
+        query_kwargs = {'mode': mode, 'top_k': top_k, 'response_type': response_type, 'ids': ids}
         query_kwargs['only_need_context'] = False
 
         try:
             # Call the now async query method
             answer: str = await self.rag_manager.query(
-                kb_name=params.kb,
-                query_text=params.question,
+                kb_name=kb,
+                query_text=query,
                 **query_kwargs
             )
-            logger.info(f"Successfully generated answer for KB '{params.kb}'. Length: {len(answer)}")
         except (KnowledgeBaseNotFoundError, ConfigurationError) as e:
-            logger.warning(f"Configuration or KB not found error during kb_answer for '{params.kb}': {e}")
+            logger.error(f"Configuration or KB not found error during kb_answer for '{kb}': {e}")
             raise ValueError(str(e)) from e
         except RAGManagerError as e:
-            logger.error(f"Runtime RAG error during kb_answer for '{params.kb}': {e}", exc_info=True)
+            logger.error(f"Runtime RAG error during kb_answer for '{kb}': {e}", exc_info=True)
             raise RuntimeError(f"Query failed: {e}") from e
         except Exception as e:
-            logger.exception(f"Unexpected error during kb_answer for '{params.kb}': {e}")
+            logger.exception(f"Unexpected error during kb_answer for '{kb}': {e}")
             raise RuntimeError(f"An unexpected error occurred: {e}") from e
 
         return _wrap_result(answer)
@@ -167,7 +137,6 @@ class MCP:
         try:
             # kb_manager.list_kbs is now async and returns Dict[str, str]
             kb_dict: Dict[str, str] = await self.kb_manager.list_kbs()
-            logger.info(f"Found knowledge bases: {kb_dict}")
 
             # Transform the dict into the desired list of objects format
             kb_list_formatted = [

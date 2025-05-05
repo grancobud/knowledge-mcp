@@ -1,8 +1,7 @@
 from lightrag.llm.openai import openai_complete_if_cache
 from lightrag.llm.openai import openai_embed
 from lightrag.utils import EmbeddingFunc
-import numpy as np
-import os
+import numpy as np      
 from knowledge_mcp.config import Config
 
 async def llm_model_func(

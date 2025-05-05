@@ -44,12 +44,12 @@ class RagManager:
         Asynchronous access.
         """
         if kb_name in self._rag_instances:
-            logging.getLogger(f"kbmcp.{kb_name}").info("Returning cached LightRAG instance.")
+            logging.getLogger(f"kbmcp.{kb_name}").debug("Returning cached LightRAG instance.")
             return self._rag_instances[kb_name]
         else:
             if self.kb_manager.kb_exists(kb_name):
                 # Call the async creation method directly
-                logging.getLogger(f"kbmcp.{kb_name}").info("No cached instance found. Running async create_rag_instance...")
+                logging.getLogger(f"kbmcp.{kb_name}").debug("No cached instance found. Running async create_rag_instance...")
                 # Now awaits the async creation method directly
                 try:
                     instance = await self.create_rag_instance(kb_name)
@@ -68,7 +68,7 @@ class RagManager:
         if not self.kb_manager.kb_exists(kb_name):
             raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' does not exist.")
         kb_path = self.kb_manager.get_kb_path(kb_name)
-        logging.getLogger(f"kbmcp.{kb_name}").info(f"Creating new LightRAG instance in {kb_path}")
+        logging.getLogger(f"kbmcp.{kb_name}").debug(f"Creating new LightRAG instance in {kb_path}")
 
         try:
             # Get the singleton config instance
@@ -179,6 +179,7 @@ class RagManager:
         """
         kb_logger = logging.getLogger(f"kbmcp.{kb_name}") # Get logger once for this method
         kb_logger.info(f"--- Executing asynchronous query for KB: {kb_name} ---")
+        kb_logger.info(f"Query: {query_text}")
         try:
             # Get instance asynchronously
             rag_instance = await self.get_rag_instance(kb_name)
@@ -192,14 +193,14 @@ class RagManager:
             # Merge configurations: kwargs > kb_config
             final_query_params = kb_config.copy()
             if kwargs:
-                kb_logger.info(f"Applying runtime query kwargs: {kwargs}")
+                kb_logger.debug(f"Applying runtime query kwargs: {kwargs}")
                 final_query_params.update(kwargs)
             else:
-                kb_logger.info("No runtime query kwargs provided.")
+                kb_logger.debug("No runtime query kwargs provided.")
 
             # Ensure 'description' is not passed as a query param
             final_query_params.pop("description", None)
-            kb_logger.info(f"Executing query with final parameters (excluding description): {final_query_params}")
+            kb_logger.info(f"Query parameters: {final_query_params}")
 
             # Create QueryParam instance
             try:
@@ -217,7 +218,6 @@ class RagManager:
                 query=query_text, 
                 param=query_param_instance
             )
-            kb_logger.info(f"Async query wrapper successful for '{kb_name}'.")
             return result
 
         except (KnowledgeBaseNotFoundError, RAGInitializationError, ConfigurationError) as e:

@@ -116,9 +116,8 @@ The primary way to interact with `knowledge-mcp` is through its CLI, accessed vi
 **All commands require the `--config` option pointing to your main configuration file.**
 
 ```bash
-knowledge-mcp --config config.yaml shell
+uv run knowledge-mcp --config /path/to/config.yaml shell
 ```
-
 **Available Commands (Interactive Shell):**
 
 | Command  | Description                                                                 | Arguments                                                                      |
@@ -181,9 +180,9 @@ knowledge-mcp --config config.yaml shell
 ```
 3. Test with MCP Inspector
 ```
-npx @modelcontextprotocol/inspector uv run cli --config ./kbs/config.yaml mcp
+npx @modelcontextprotocol/inspector uv "run knowledge-mcp --config /path/to/config.yaml mcp"
 ```
 or
 ```
-npx @modelcontextprotocol/inspector uvx --project . knowledge-mcp --config ./kbs/config.yaml mcp
+npx @modelcontextprotocol/inspector uvx --project . knowledge-mcp "--config ./kbs/config.yaml mcp
 ```
