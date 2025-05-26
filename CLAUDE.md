@@ -6,7 +6,7 @@ data/
 docs/
 
 # Coding
-- Use Python 3.13 features and syntax
+- Use Python 3.12 features and syntax
 - Follow PEP 8 style guide for Python code
 - Use type hints everywhere possible
 - Use list, dict, and set comprehensions when appropriate for concise and readable code.
