@@ -77,8 +77,8 @@ def mock_lightrag_instance():
 @pytest.fixture(autouse=True)
 def patch_openai_funcs():
     """Patches the OpenAI function imports to avoid actual API calls."""
-    with patch('knowledge_mcp.rag.knowledge_mcp.openai_func.embedding_func', new_callable=MagicMock) as mock_embed_func, \
-         patch('knowledge_mcp.rag.knowledge_mcp.openai_func.llm_model_func', new_callable=MagicMock) as mock_llm_func:
+    with patch('knowledge_mcp.openai_func.embedding_func', new_callable=MagicMock) as mock_embed_func, \
+         patch('knowledge_mcp.openai_func.llm_model_func', new_callable=MagicMock) as mock_llm_func:
         yield {"embed_func": mock_embed_func, "llm_func": mock_llm_func}
 
 @pytest.fixture(autouse=True)
