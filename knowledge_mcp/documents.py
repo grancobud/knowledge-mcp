@@ -7,15 +7,10 @@ from knowledge_mcp.rag import RagManager
 
 logger = logging.getLogger(__name__)
 
-# Define supported extensions explicitly if needed, otherwise rely on textract
-SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".rtf", ".xlsx", ".pptx", ".html", ".htm", ".eml", ".msg"}
-
-# Define common text file extensions
-TEXT_EXTENSIONS = {
-    ".txt", ".md", ".py", ".json", ".yaml", ".yml", 
-    ".toml", ".csv", ".log", ".ini", ".cfg", ".rst",
-    ".html", ".htm", ".xml", ".js", ".ts", ".css", ".scss",
-    ".sh", ".bash", ".zsh", ".ps1", ".bat" 
+SUPPORTED_EXTENSIONS = {
+    ".csv", ".doc", ".docx", ".eml", ".epub", ".gif", ".htm", ".html", ".jpeg", ".jpg",
+    ".json", ".log", ".mp3", ".msg", ".odt", ".ogg", ".pdf", ".png", ".pptx", ".ps",
+    ".psv", ".rtf", ".tab", ".tif", ".tiff", ".tsv", ".txt", ".wav", ".xls", ".xlsx"
 }
 
 class DocumentManagerError(Exception):
@@ -100,7 +95,7 @@ class DocumentManager:
         file_extension = doc_path.suffix.lower()
         text_content = ""
 
-        if file_extension in TEXT_EXTENSIONS:
+        if file_extension in SUPPORTED_EXTENSIONS:
             logger.info(f"Reading text content directly from {doc_path}...")
             try:
                 # Read as text, handle potential encoding issues

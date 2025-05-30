@@ -3,8 +3,9 @@
 
 import logging
 import logging.handlers
-from lightrag import LightRAG
-from lightrag.base import QueryParam
+# from lightrag.lightrag import LightRAG
+# from lightrag.base import QueryParam
+from lightrag import LightRAG, QueryParam
 from lightrag.kg.shared_storage import initialize_pipeline_status
 from typing import Dict, Optional, Any
 import asyncio
@@ -137,7 +138,8 @@ class RagManager:
                 embedding_cache_config={
                     "enabled": cache_config.enabled,
                     "similarity_threshold": cache_config.similarity_threshold,
-                },              
+                },
+
             )
 
             # --- Initialize Storages/Components ---
