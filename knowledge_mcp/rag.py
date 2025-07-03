@@ -3,9 +3,9 @@
 
 import logging
 import logging.handlers
-# from lightrag.lightrag import LightRAG
-# from lightrag.base import QueryParam
+from raganything import RAGAnything
 from lightrag import LightRAG, QueryParam
+from lightrag.base import DeletionResult
 from lightrag.kg.shared_storage import initialize_pipeline_status
 from typing import Dict, Optional, Any
 import asyncio
@@ -34,12 +34,12 @@ class RagManager:
 
     def __init__(self, config: Config, kb_manager: KnowledgeBaseManager): 
         """Initializes the RagManager with the KB manager."""
-        self._rag_instances: Dict[str, LightRAG] = {}
+        self._rag_instances: Dict[str, RAGAnything] = {}
         self.kb_manager = kb_manager 
         self.config = config # Store config if needed for global defaults
         logger.info("RagManager initialized.") 
 
-    async def get_rag_instance(self, kb_name: str) -> LightRAG:
+    async def get_rag_instance(self, kb_name: str) -> RAGAnything:
         """
         Retrieves or creates and initializes a LightRAG instance for the given KB.
         Asynchronous access.
@@ -64,7 +64,7 @@ class RagManager:
             else:
                 raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' does not exist.")
     
-    async def create_rag_instance(self, kb_name: str) -> LightRAG:
+    async def create_rag_instance(self, kb_name: str) -> RAGAnything:
         # Use KbManager to check existence and get path
         if not self.kb_manager.kb_exists(kb_name):
             raise KnowledgeBaseNotFoundError(f"Knowledge base '{kb_name}' does not exist.")
@@ -101,6 +101,7 @@ class RagManager:
             if llm_provider == "openai":
                 import knowledge_mcp.openai_func
                 llm_func = knowledge_mcp.openai_func.llm_model_func
+                vision_model_func = knowledge_mcp.openai_func.vision_model_func
             else:
                 raise UnsupportedProviderError("Only OpenAI language model provider currently supported.") 
 
@@ -128,7 +129,7 @@ class RagManager:
 
             # --- Instantiate LightRAG ---
             # Note: Verify LightRAG constructor parameters closely with LightRAG docs
-            rag = LightRAG(
+            lightrag = LightRAG(
                 working_dir=str(kb_path),
                 llm_model_func=llm_func,
                 llm_model_kwargs=llm_kwargs,
@@ -139,16 +140,19 @@ class RagManager:
                     "enabled": cache_config.enabled,
                     "similarity_threshold": cache_config.similarity_threshold,
                 },
-
             )
-
-            # --- Initialize Storages/Components ---
             kb_logger.debug(f"Initializing LightRAG components for {kb_name}...")
             # Check LightRAG documentation for the correct initialization method
             # It might be initialize_components(), initialize_storages(), or similar.
             # Assuming initialize_components() based on common patterns
-            await rag.initialize_storages()
+            await lightrag.initialize_storages()
             await initialize_pipeline_status()
+
+            rag = RAGAnything(
+                lightrag=lightrag,
+                vision_model_func=vision_model_func,
+            )
+
             kb_logger.info(f"Successfully initialized LightRAG instance for {kb_name}.")
             self._rag_instances[kb_name] = rag
             return rag
@@ -216,7 +220,7 @@ class RagManager:
             # IMPORTANT: Assumes rag_instance.query is SYNCHRONOUS.
             # Running the synchronous LightRAG query in a separate thread.
             result = await asyncio.to_thread(
-                rag_instance.query, 
+                rag_instance.lightrag.query, 
                 query=query_text, 
                 param=query_param_instance
             )
@@ -233,25 +237,28 @@ class RagManager:
         """Ingests a document into the specified knowledge base."""
         kb_logger = logging.getLogger(f"kbmcp.{kb_name}") # Get logger once for this method
         kb_logger.info(f"Ingesting document '{file_path.name}' into KB '{kb_name}'...")
-        
+        kb_path = self.kb_manager.get_kb_path(kb_name)
+        output_dir = kb_path / "output"
+        output_dir.mkdir(exist_ok=True)  # Ensure output directory exists
+        generated_doc_id = doc_id or file_path.name 
+
         try:
             # Get instance asynchronously
             rag_instance = await self.get_rag_instance(kb_name)
             
-            # Use LightRAG's ingest_doc method - Run synchronous ingest_doc in a thread
-            # Check LightRAG docs for exact parameters and return value
-            kb_logger.debug(f"Running ingest_doc for {file_path} in thread...")
+            kb_logger.debug(f"Running ingest for {file_path} in thread...")
             await asyncio.to_thread(
-                rag_instance.ingest_doc, 
-                doc_path=str(file_path)
-                # Pass doc_id if the underlying method supports it and it's needed:
-                # , doc_id=doc_id 
+                rag_instance.process_document_complete,
+                file_path=str(file_path),
+                output_dir=str(output_dir),     
+                parse_method="auto",
+                doc_id=generated_doc_id 
             )
-            
+
             # Assuming ingest_doc doesn't directly return a useful ID in this version
             # We might need to generate/manage IDs separately if required.
-            generated_doc_id = doc_id or file_path.stem # Placeholder ID logic
-            kb_logger.info(f"Successfully ingested document '{file_path.name}' (ID: {generated_doc_id}).")
+            
+            kb_logger.info(f"Successfully ingested document '{file_path.name}' as '{generated_doc_id}'")
             return generated_doc_id
         
         except RAGInitializationError as e:
@@ -264,3 +271,16 @@ class RagManager:
             logging.getLogger(f"kbmcp.{kb_name}").exception(f"Failed to ingest document '{file_path.name}': {e}")
             # Consider wrapping in a specific IngestionError if needed
             raise RAGManagerError(f"Ingestion failed for '{file_path.name}': {e}") from e
+
+    def remove_document(self, kb_name: str, doc_id: str) -> DeletionResult:
+        """Removes a document from the specified knowledge base by its ID."""
+        try:
+            rag_instance = self.get_rag_instance(kb_name)
+            result = rag_instance.lightrag.adelete_by_doc_id(doc_id)
+            return result
+        except RAGInitializationError:
+            logging.getLogger(f"kbmcp.{kb_name}").error("Cannot remove document, RAG instance failed to initialize")
+            raise
+        except Exception as e:
+            logging.getLogger(f"kbmcp.{kb_name}").exception(f"Failed to remove document '{doc_id}': {e}")
+            raise RAGManagerError(f"Failed to remove document '{doc_id}': {e}") from e

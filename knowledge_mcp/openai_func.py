@@ -33,6 +33,39 @@ async def llm_model_func(
         **kwargs, # Pass remaining kwargs
     )
 
+async def vision_model_func(prompt, system_prompt=None, history_messages=[], image_data=None, **kwargs) -> str: 
+    model_name = kwargs["hashing_kv"].global_config.get("llm_model_name")
+    api_key = Config.get_instance().lightrag.llm.api_key
+    base_url = Config.get_instance().lightrag.llm.api_base
+
+    if not api_key:
+        raise ValueError("OpenAI API key is not provided in config or environment variables.")
+    
+    return await openai_complete_if_cache(
+        model=model_name,
+        prompt="",
+        system_prompt=system_prompt,
+        history_messages=history_messages,
+        messages=[
+            {"role": "system", "content": system_prompt} if system_prompt else None,
+            {"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}}
+            ]} if image_data else {"role": "user", "content": prompt}
+        ],
+        api_key=api_key,
+        base_url=base_url,
+        **kwargs,
+    ) if image_data else openai_complete_if_cache(
+            model=model_name,
+            prompt=prompt,
+            system_prompt=system_prompt,
+            history_messages=history_messages,
+            api_key=api_key,
+            base_url=base_url,
+            **kwargs,
+        )
+
 async def openai_embedding_func(texts: list[str]) -> np.ndarray:
     embedding_model = Config.get_instance().lightrag.embedding.model_name
     

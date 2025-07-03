@@ -9,8 +9,8 @@ import os
 import subprocess
 
 from knowledge_mcp.knowledgebases import KnowledgeBaseManager, KnowledgeBaseExistsError, KnowledgeBaseNotFoundError, KnowledgeBaseError
-from knowledge_mcp.rag import RagManager, RAGInitializationError, ConfigurationError, RAGManagerError
-from knowledge_mcp.documents import DocumentManager
+from knowledge_mcp.rag import RagManager, RAGInitializationError, ConfigurationError, RAGManagerError, DeletionResult
+# from knowledge_mcp.documents import DocumentManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class Shell(cmd.Cmd):
         super().__init__(stdout=stdout)
         self.kb_manager = kb_manager
         self.rag_manager = rag_manager
-        self.document_manager = DocumentManager(rag_manager)
+        # self.document_manager = DocumentManager(rag_manager)
         self._start_background_loop()
 
     def _run_background_loop(self, loop: threading.Thread):
@@ -245,7 +245,8 @@ class Shell(cmd.Cmd):
                 return
 
             print(f"Adding document '{file_path.name}' to KB '{kb_name}'...")
-            added_doc_id = asyncio.run(self.document_manager.add(file_path, kb_name))
+            # added_doc_id = asyncio.run(self.document_manager.add(file_path, kb_name))
+            added_doc_id = asyncio.run(self.rag_manager.ingest_document(file_path, kb_name))
             print(f"Document added successfully with ID: {added_doc_id}")
 
         except KnowledgeBaseNotFoundError:
@@ -268,11 +269,8 @@ class Shell(cmd.Cmd):
             doc_id = args[1]
 
             print(f"Removing document '{doc_id}' from KB '{kb_name}'...")
-            removed = self.rag_manager.remove_document(kb_name, doc_id)
-            if removed:
-                print(f"Document '{doc_id}' removed successfully.")
-            else:
-                 print(f"Document '{doc_id}' not found in KB '{kb_name}' or could not be removed.")
+            result = self.rag_manager.remove_document(kb_name, doc_id)
+            print(f"Document '{doc_id}' removal result: {result.status}. {result.message}")
         except KnowledgeBaseNotFoundError:
             print(f"Error: Knowledge base '{kb_name}' not found.")
         except Exception as e:

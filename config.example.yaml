@@ -4,7 +4,7 @@ knowledge_base:
 lightrag:
   llm:
     provider: "openai"
-    model_name: "gpt-4o-mini"
+    model_name: "gpt-4.1-mini"
     max_token_size: 32768
     api_key: "${OPENAI_API_KEY}"
     api_base: "${OPENAI_API_BASE}"
@@ -13,10 +13,10 @@ lightrag:
       top_p: 0.9
   embedding:
     provider: "openai"
-    model_name: "text-embedding-3-small"
+    model_name: "text-embedding-3-large"
     api_key: "${OPENAI_API_KEY}"
     api_base: "${OPENAI_API_BASE}"
-    embedding_dim: 1536
+    embedding_dim: 3072
     max_token_size: 8192
   embedding_cache:
     enabled: true
@@ -30,5 +30,3 @@ logging:
   default_format: "%(levelname)s: %(message)s"
 
 env_file: .env
-
-# add foo kbs/CD09000-10.pdf
