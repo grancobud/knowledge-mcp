@@ -140,6 +140,7 @@ class RagManager:
                     "enabled": cache_config.enabled,
                     "similarity_threshold": cache_config.similarity_threshold,
                 },
+                enable_llm_cache=True,  # Enable LLM response caching for modal processors
             )
             kb_logger.debug(f"Initializing LightRAG components for {kb_name}...")
             # Check LightRAG documentation for the correct initialization method
@@ -152,7 +153,6 @@ class RagManager:
                 lightrag=lightrag,
                 llm_model_func=llm_func,  # Pass LLM function for text processing
                 vision_model_func=vision_model_func,
-                # modal_caption_func=vision_model_func,  # Use vision model for modal captions
                 embedding_func=embed_func,  # Pass embedding function for modal processors
             )
 

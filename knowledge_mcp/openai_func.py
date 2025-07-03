@@ -9,7 +9,11 @@ async def llm_model_func(
 ) -> str:
     # Use model_name from global config provided by LightRAG within kwargs
     # Check if 'hashing_kv' and 'global_config' are present before accessing
-    model_name = kwargs["hashing_kv"].global_config.get("llm_model_name")
+    if "hashing_kv" in kwargs and hasattr(kwargs["hashing_kv"], "global_config"):
+        model_name = kwargs["hashing_kv"].global_config.get("llm_model_name")
+    else:
+        # Fallback to config when hashing_kv is not available (e.g., from modal processors)
+        model_name = Config.get_instance().lightrag.llm.model_name
 
     # Prioritize api_key and base_url from kwargs (coming from llm_model_kwargs)
     # Use environment variables as fallback
@@ -34,7 +38,13 @@ async def llm_model_func(
     )
 
 async def vision_model_func(prompt, system_prompt=None, history_messages=[], image_data=None, **kwargs) -> str: 
-    model_name = kwargs["hashing_kv"].global_config.get("llm_model_name")
+    # Use model_name from global config provided by LightRAG within kwargs
+    # Check if 'hashing_kv' and 'global_config' are present before accessing
+    if "hashing_kv" in kwargs and hasattr(kwargs["hashing_kv"], "global_config"):
+        model_name = kwargs["hashing_kv"].global_config.get("llm_model_name")
+    else:
+        # Fallback to config when hashing_kv is not available (e.g., from modal processors)
+        model_name = Config.get_instance().lightrag.llm.model_name
     api_key = Config.get_instance().lightrag.llm.api_key
     base_url = Config.get_instance().lightrag.llm.api_base
 
@@ -56,7 +66,7 @@ async def vision_model_func(prompt, system_prompt=None, history_messages=[], ima
         api_key=api_key,
         base_url=base_url,
         **kwargs,
-    ) if image_data else openai_complete_if_cache(
+    ) if image_data else await openai_complete_if_cache(
             model=model_name,
             prompt=prompt,
             system_prompt=system_prompt,
