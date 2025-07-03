@@ -2,21 +2,15 @@
 import logging
 import asyncio
 from pathlib import Path
-import textract 
 from knowledge_mcp.rag import RagManager 
 
 logger = logging.getLogger(__name__)
 
-# Define supported extensions explicitly if needed, otherwise rely on textract
-SUPPORTED_EXTENSIONS = {".txt", ".md", ".pdf", ".docx", ".rtf", ".xlsx", ".pptx", ".html", ".htm", ".eml", ".msg"}
-
-# Define common text file extensions
-TEXT_EXTENSIONS = {
-    ".txt", ".md", ".py", ".json", ".yaml", ".yml", 
-    ".toml", ".csv", ".log", ".ini", ".cfg", ".rst",
-    ".html", ".htm", ".xml", ".js", ".ts", ".css", ".scss",
-    ".sh", ".bash", ".zsh", ".ps1", ".bat" 
-}
+# SUPPORTED_EXTENSIONS = {
+#     ".csv", ".doc", ".docx", ".eml", ".epub", ".gif", ".htm", ".html", ".jpeg", ".jpg",
+#     ".json", ".log", ".mp3", ".msg", ".odt", ".ogg", ".pdf", ".png", ".pptx", ".ps",
+#     ".psv", ".rtf", ".tab", ".tif", ".tiff", ".tsv", ".txt", ".wav", ".xls", ".xlsx"
+# }
 
 class DocumentManagerError(Exception):
     """Base exception for document management errors."""
@@ -38,37 +32,37 @@ class DocumentManager:
         self.rag_manager = rag_manager
         logger.info("DocumentManager initialized.")
 
-    def _extract_text(self, doc_path: Path) -> str:
-        """Extracts text content from a document using textract.
+    # def _extract_text(self, doc_path: Path) -> str:
+    #     """Extracts text content from a document using textract.
 
-        Args:
-            doc_path: Path to the document file.
+    #     Args:
+    #         doc_path: Path to the document file.
 
-        Returns:
-            The extracted text content as a string.
+    #     Returns:
+    #         The extracted text content as a string.
 
-        Raises:
-            TextExtractionError: If textract fails to process the file.
-            UnsupportedFileTypeError: If the file extension is not supported (optional check).
-        """
-        if doc_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-             # You might choose to rely solely on textract's capabilities
-             # raise UnsupportedFileTypeError(f"File type {doc_path.suffix} not explicitly supported.")
-             logger.warning(f"File type {doc_path.suffix} not in explicitly supported list, attempting extraction with textract.")
+    #     Raises:
+    #         TextExtractionError: If textract fails to process the file.
+    #         UnsupportedFileTypeError: If the file extension is not supported (optional check).
+    #     """
+    #     if doc_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+    #          # You might choose to rely solely on textract's capabilities
+    #          # raise UnsupportedFileTypeError(f"File type {doc_path.suffix} not explicitly supported.")
+    #          logger.warning(f"File type {doc_path.suffix} not in explicitly supported list, attempting extraction with textract.")
 
-        try:
-            logger.debug(f"Extracting text from: {doc_path}")
-            # textract handles various file types internally
-            # Specify encoding if known issues arise, otherwise default utf-8 is usually fine
-            byte_content = textract.process(str(doc_path)) # textract might expect string path
-            text_content = byte_content.decode('utf-8', errors='replace') # Decode bytes to string
-            logger.debug(f"Successfully extracted text from: {doc_path} (Length: {len(text_content)})" )
-            return text_content
-        except Exception as e:
-            # Catching a broad exception as textract can raise various errors
-            msg = f"Failed to extract text from {doc_path}: {e}"
-            logger.exception(msg) # Log with stack trace
-            raise TextExtractionError(msg) from e
+    #     try:
+    #         logger.debug(f"Extracting text from: {doc_path}")
+    #         # textract handles various file types internally
+    #         # Specify encoding if known issues arise, otherwise default utf-8 is usually fine
+    #         byte_content = textract.process(str(doc_path)) # textract might expect string path
+    #         text_content = byte_content.decode('utf-8', errors='replace') # Decode bytes to string
+    #         logger.debug(f"Successfully extracted text from: {doc_path} (Length: {len(text_content)})" )
+    #         return text_content
+    #     except Exception as e:
+    #         # Catching a broad exception as textract can raise various errors
+    #         msg = f"Failed to extract text from {doc_path}: {e}"
+    #         logger.exception(msg) # Log with stack trace
+    #         raise TextExtractionError(msg) from e
 
     async def add(self, doc_path: Path, kb_name: str) -> None: 
         """Ingests a document into the specified knowledge base.
@@ -100,7 +94,7 @@ class DocumentManager:
         file_extension = doc_path.suffix.lower()
         text_content = ""
 
-        if file_extension in TEXT_EXTENSIONS:
+        if True:
             logger.info(f"Reading text content directly from {doc_path}...")
             try:
                 # Read as text, handle potential encoding issues

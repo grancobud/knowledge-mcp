@@ -9,8 +9,8 @@ import os
 import subprocess
 
 from knowledge_mcp.knowledgebases import KnowledgeBaseManager, KnowledgeBaseExistsError, KnowledgeBaseNotFoundError, KnowledgeBaseError
-from knowledge_mcp.rag import RagManager, RAGInitializationError, ConfigurationError, RAGManagerError
-from knowledge_mcp.documents import DocumentManager
+from knowledge_mcp.rag import RagManager, RAGInitializationError, ConfigurationError, RAGManagerError, DeletionResult
+# from knowledge_mcp.documents import DocumentManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,27 +23,37 @@ class Shell(cmd.Cmd):
         super().__init__(stdout=stdout)
         self.kb_manager = kb_manager
         self.rag_manager = rag_manager
-        self.document_manager = DocumentManager(rag_manager)
+        # self.document_manager = DocumentManager(rag_manager)
+        self._loop = None
         self._start_background_loop()
 
-    def _run_background_loop(self, loop: threading.Thread):
+    def _run_background_loop(self):
         """Target function for the background thread to run the event loop."""
-        loop.run()
-        logger.info("Background thread stopped.")
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+        try:
+            self._loop.run_forever()
+        finally:
+            self._loop.close()
+            logger.info("Background thread stopped.")
 
     def _start_background_loop(self):
         """Starts the background thread."""
         self._async_thread = threading.Thread(
             target=self._run_background_loop,
-            args=(threading.current_thread(),),
             daemon=True, # Allow program to exit even if thread is running
             name="AsyncLoopThread"
         )
         self._async_thread.start()
+        # Wait a bit for the loop to be created
+        import time
+        time.sleep(0.1)
         logger.info("Background thread started.")
 
     def _stop_background_loop(self):
         """Signals the background thread to stop."""
+        if hasattr(self, '_loop') and self._loop and not self._loop.is_closed():
+            self._loop.call_soon_threadsafe(self._loop.stop)
         if hasattr(self, '_async_thread') and self._async_thread.is_alive():
             logger.info("Stopping background thread...")
             # Wait for the thread to finish
@@ -51,6 +61,14 @@ class Shell(cmd.Cmd):
             logger.info("Background thread joined.")
         else:
             logger.info("Background thread not running or not initialized.")
+
+    def _run_async_task(self, coro):
+        """Run an async task in the background event loop and wait for the result."""
+        if not self._loop or self._loop.is_closed():
+            raise RuntimeError("Background event loop is not running")
+        
+        future = asyncio.run_coroutine_threadsafe(coro, self._loop)
+        return future.result()  # This will block until the coroutine completes
 
     # --- Basic Commands ---
 
@@ -87,7 +105,7 @@ class Shell(cmd.Cmd):
             try:
                 print(f"Initializing RAG instance for '{name}'...")
                 # Assuming create_rag_instance is now async
-                asyncio.run(self.rag_manager.create_rag_instance(name))
+                self._run_async_task(self.rag_manager.create_rag_instance(name))
                 print(f"Knowledge base '{name}' created and RAG instance initialized successfully.")
             except (RAGInitializationError, ConfigurationError, RAGManagerError) as rag_e:
                 logger.warning(f"KB '{name}' created, but failed to initialize RAG instance: {rag_e}")
@@ -107,7 +125,7 @@ class Shell(cmd.Cmd):
         """List all available knowledge bases and their descriptions."""
         try:
             # list_kbs is now async, run it in the event loop
-            kbs_with_desc = asyncio.run(self.kb_manager.list_kbs())
+            kbs_with_desc = self._run_async_task(self.kb_manager.list_kbs())
 
             if not kbs_with_desc:
                 print("No knowledge bases found.")
@@ -245,7 +263,8 @@ class Shell(cmd.Cmd):
                 return
 
             print(f"Adding document '{file_path.name}' to KB '{kb_name}'...")
-            added_doc_id = asyncio.run(self.document_manager.add(file_path, kb_name))
+            # added_doc_id = asyncio.run(self.document_manager.add(file_path, kb_name))
+            added_doc_id = self._run_async_task(self.rag_manager.ingest_document(kb_name, file_path))
             print(f"Document added successfully with ID: {added_doc_id}")
 
         except KnowledgeBaseNotFoundError:
@@ -268,11 +287,8 @@ class Shell(cmd.Cmd):
             doc_id = args[1]
 
             print(f"Removing document '{doc_id}' from KB '{kb_name}'...")
-            removed = self.rag_manager.remove_document(kb_name, doc_id)
-            if removed:
-                print(f"Document '{doc_id}' removed successfully.")
-            else:
-                 print(f"Document '{doc_id}' not found in KB '{kb_name}' or could not be removed.")
+            result = self._run_async_task(self.rag_manager.remove_document(kb_name, doc_id))
+            print(f"Document '{doc_id}' removal result: {result.status}. {result.message}")
         except KnowledgeBaseNotFoundError:
             print(f"Error: Knowledge base '{kb_name}' not found.")
         except Exception as e:
@@ -296,7 +312,7 @@ class Shell(cmd.Cmd):
 
         try:
             # Call the synchronous query method directly, passing kwargs
-            result = asyncio.run(self.rag_manager.query(kb_name, query_text))
+            result = self._run_async_task(self.rag_manager.query(kb_name, query_text))
             print(" [done]", file=self.stdout) # Indicate completion
             print("\n--- Query Result ---", file=self.stdout)
             print(result, file=self.stdout) # result should already be a string or printable
