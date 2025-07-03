@@ -1168,7 +1168,7 @@ dependencies = [
     { name = "fastmcp" },
     { name = "graspologic" },
     { name = "lightrag-hku", extra = ["api"] },
-    { name = "mineru", extra = ["core"] },
+    { name = "mineru" },
     { name = "nano-vectordb" },
     { name = "networkx" },
     { name = "openai" },
@@ -1176,6 +1176,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "raganything", extra = ["all"] },
+    { name = "six" },
     { name = "tenacity" },
     { name = "tiktoken" },
 ]
@@ -1198,7 +1199,7 @@ requires-dist = [
     { name = "fastmcp", specifier = ">=2.2.1" },
     { name = "graspologic", specifier = ">=3.4.1" },
     { name = "lightrag-hku", extras = ["api"], specifier = ">=1.3.9" },
-    { name = "mineru", extras = ["core"], specifier = ">=2.0.6" },
+    { name = "mineru", specifier = ">=2.0.6" },
     { name = "nano-vectordb", specifier = ">=0.0.4.3" },
     { name = "networkx", specifier = ">=3.4.2" },
     { name = "openai", specifier = ">=1.75.0" },
@@ -1207,6 +1208,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "raganything", extras = ["all"], specifier = ">=1.0.4" },
+    { name = "six", specifier = ">=1.16.0" },
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "tiktoken", specifier = ">=0.9.0" },
 ]
@@ -2693,11 +2695,11 @@ wheels = [
 
 [[package]]
 name = "six"
-version = "1.12.0"
+version = "1.17.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/dd/bf/4138e7bfb757de47d1f4b6994648ec67a51efe58fa907c1e11e350cddfca/six-1.12.0.tar.gz", hash = "sha256:d16a0141ec1a18405cd4ce8b4613101da75da0e9a7aec5bdd4fa804d0e0eba73", size = 32725, upload-time = "2018-12-10T00:59:58.966Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/fb/00a976f728d0d1fecfe898238ce23f502a721c0ac0ecfedb80e0d88c64e9/six-1.12.0-py2.py3-none-any.whl", hash = "sha256:3350809f0555b11f552448330d0b52d5f24c91a322ea4a15ef22629740f3761c", size = 10586, upload-time = "2018-12-10T00:59:57.273Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
 ]
 
 [[package]]

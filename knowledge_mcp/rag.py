@@ -150,7 +150,10 @@ class RagManager:
 
             rag = RAGAnything(
                 lightrag=lightrag,
+                llm_model_func=llm_func,  # Pass LLM function for text processing
                 vision_model_func=vision_model_func,
+                # modal_caption_func=vision_model_func,  # Use vision model for modal captions
+                embedding_func=embed_func,  # Pass embedding function for modal processors
             )
 
             kb_logger.info(f"Successfully initialized LightRAG instance for {kb_name}.")
@@ -187,8 +190,7 @@ class RagManager:
         kb_logger.info(f"--- Executing asynchronous query for KB: {kb_name} ---")
         kb_logger.info(f"Query: {query_text}")
         try:
-            # Get instance asynchronously
-            rag_instance = await self.get_rag_instance(kb_name)
+            # Get KB path for configuration loading
             kb_path = self.kb_manager.get_kb_path(kb_name)
 
             # Load KB-specific configuration
@@ -217,12 +219,23 @@ class RagManager:
                 raise ConfigurationError(f"Invalid query parameters: {e}") from e
 
             # Execute the query using the underlying LightRAG instance
-            # IMPORTANT: Assumes rag_instance.query is SYNCHRONOUS.
-            # Running the synchronous LightRAG query in a separate thread.
+            # Fix for event loop issue: Force recreation of RAG instance for each query
+            # This prevents event loop conflicts by ensuring fresh state
+            
+            # Remove the cached instance to force recreation for this query
+            # This ensures LightRAG starts with a clean event loop state
+            if kb_name in self._rag_instances:
+                kb_logger.debug("Removing cached RAG instance to prevent event loop conflicts")
+                del self._rag_instances[kb_name]
+                
+            # Get a fresh RAG instance for this query
+            fresh_rag_instance = await self.get_rag_instance(kb_name)
+            
+            # Execute the query with the fresh instance
             result = await asyncio.to_thread(
-                rag_instance.lightrag.query, 
-                query=query_text, 
-                param=query_param_instance
+                fresh_rag_instance.lightrag.query,
+                query_text,
+                query_param_instance
             )
             return result
 
@@ -246,9 +259,8 @@ class RagManager:
             # Get instance asynchronously
             rag_instance = await self.get_rag_instance(kb_name)
             
-            kb_logger.debug(f"Running ingest for {file_path} in thread...")
-            await asyncio.to_thread(
-                rag_instance.process_document_complete,
+            kb_logger.debug(f"Running ingest for {file_path}...")
+            await rag_instance.process_document_complete(
                 file_path=str(file_path),
                 output_dir=str(output_dir),     
                 parse_method="auto",
@@ -272,11 +284,11 @@ class RagManager:
             # Consider wrapping in a specific IngestionError if needed
             raise RAGManagerError(f"Ingestion failed for '{file_path.name}': {e}") from e
 
-    def remove_document(self, kb_name: str, doc_id: str) -> DeletionResult:
+    async def remove_document(self, kb_name: str, doc_id: str) -> DeletionResult:
         """Removes a document from the specified knowledge base by its ID."""
         try:
-            rag_instance = self.get_rag_instance(kb_name)
-            result = rag_instance.lightrag.adelete_by_doc_id(doc_id)
+            rag_instance = await self.get_rag_instance(kb_name)
+            result = await rag_instance.lightrag.adelete_by_doc_id(doc_id)
             return result
         except RAGInitializationError:
             logging.getLogger(f"kbmcp.{kb_name}").error("Cannot remove document, RAG instance failed to initialize")
