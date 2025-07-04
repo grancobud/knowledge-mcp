@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "A MCP server designed to bridge the gap between specialized knowledge domains and AI assistants."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -48,6 +48,8 @@ Repository = "https://github.com/olafgeibig/knowledge-mcp"
 [project.scripts]
 knowledge-mcp = "knowledge_mcp.cli:main"
 main = "knowledge_mcp.cli:main"
+shell = "scripts.shell:main"
+insp = "scripts.insp:main"
 test = "pytest:main"
 
 [build-system]

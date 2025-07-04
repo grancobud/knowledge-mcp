@@ -34,31 +34,23 @@ class MCP:
         self.mcp_server = FastMCP(
             name="Knowledge Base MCP",
             instructions=dedent("""
-            Tools to query multiple custom knowledge bases using similarity search and a ranked knowledge-graph. 
-            Search modes: 
-            - local: Focuses on context-dependent information.
-            - global: Utilizes global knowledge.
-            - hybrid: Combines local and global retrieval methods.
-            - naive: Performs a basic search without advanced techniques.
-            - mix: Integrates knowledge graph and vector retrieval.
+            Tools to query multiple custom knowledge bases using similarity search and a ranked knowledge-graph.
+            
+            Search modes explained:
+            - local: Entity-specific queries - focuses on finding specific concepts, tools, or entities
+            - global: Relationship discovery - focuses on understanding connections between different aspects  
+            - hybrid: Cross-domain queries - combines both entity-focused and relationship-focused retrieval
+            - mix: Integrates knowledge graph and vector retrieval
+            - naive: Performs a basic search without advanced techniques
             """),
         )
-        self.mcp_server.add_tool(
-            self.retrieve, 
-            name="retrieve", 
-            description="Returns the retrieval results only. Good when the client AI needs evidence for its own chain-of-thought or wish to cross-check multiple modes/top-k values cheaply. Retrieves raw context passages from a knowledge base without synthesizing an LLM answer. Client AI must generate the answer and that increases token volume for the client AI. Faster response, good for multiple queries."
-        )
-        self.mcp_server.add_tool(
-            self.answer, 
-            name="answer", 
-            description="Returns an LLM-synthesised answer from the retrieval results. Good when you want a concise answer in one call. Uses the LLM of the mcp server to generate an answer from a knowledge base and return it with citations. Server AI must generate the answer and that increases token volume for this LLM."
-        )
-        self.mcp_server.add_tool(
-            self.list_knowledgebases,
-            name="list_knowledgebases",
-            description="List all available knowledge bases."
-            # No parameters needed, so no model specified
-        )
+        # Register tools using decorators
+        self.mcp_server.tool(name="retrieve", description="Returns the retrieval results only. Good when the client AI needs evidence for its own chain-of-thought or wish to cross-check multiple modes/top-k values cheaply. Retrieves raw context passages from a knowledge base without synthesizing an LLM answer. Client AI must generate the answer and that increases token volume for the client AI. Faster response, good for multiple queries.")(self.retrieve)
+        self.mcp_server.tool(name="answer", description="Returns an LLM-synthesised answer from the retrieval results. Good when you want a concise answer in one call. Uses the LLM of the mcp server to generate an answer from a knowledge base and return it with citations. Server AI must generate the answer and that increases token volume for this LLM.")(self.answer)
+        self.mcp_server.tool(name="list_knowledgebases", description="List all available knowledge bases.")(self.list_knowledgebases)
+        self.mcp_server.tool(name="query_local", description="Simplified local mode query - Best for entity-specific queries. Focuses on finding specific concepts, tools, or entities within your domains.")(self.query_local)
+        self.mcp_server.tool(name="query_global", description="Simplified global mode query - Best for relationship discovery. Focuses on understanding relationships and connections between different aspects of your domains.")(self.query_global)
+        self.mcp_server.tool(name="query_hybrid", description="Simplified hybrid mode query - Best for cross-domain queries. Combines both entity-focused and relationship-focused retrieval, ideal for comprehensive coverage spanning multiple knowledge areas.")(self.query_hybrid)
         self.mcp_server.run(transport="stdio")
         logger.info("MCP service initialized.")
 
@@ -66,7 +58,7 @@ class MCP:
         kb: Annotated[str, Field(description="Knowledge base to query")],
         query: Annotated[str, Field(description="Natural-language query.")],
         mode: Annotated[str, Field("mix", description='Retrieval mode ("mix", "local", "global", "hybrid", "naive", "bypass") default: "mix"')],
-        top_k: Annotated[int, Field(30, ge=5, le=120, description="Number of query results to return (5-120). 40 is reasonable.")],
+        top_k: Annotated[int, Field(30, ge=5, le=120, description="Number of query results to return (5-120). 30 is reasonable.")],
         ids: Annotated[Optional[List[str]], Field(None, description="Restrict search to these document IDs.")],
     ) -> str:
         """
@@ -100,7 +92,7 @@ class MCP:
         kb: Annotated[str, Field(description="Knowledge base to query")],
         query: Annotated[str, Field(description="Natural-language query.")],
         mode: Annotated[str, Field("mix", description='Retrieval mode ("mix", "local", "global", "hybrid", "naive", "bypass") default: "mix"')],
-        top_k: Annotated[int, Field(30, ge=5, le=120, description="Number of query results to return (5-120). 40 is reasonable.")],
+        top_k: Annotated[int, Field(30, ge=5, le=120, description="Number of query results to return (5-120). 30 is reasonable.")],
         response_type: Annotated[str, Field("Multiple Paragraphs", description='Answer style ("Multiple Paragraphs", "Single Paragraph", "Bullet Points").')],
         ids: Annotated[Optional[List[str]], Field(None, description="Restrict search to these document IDs.")],
     ) -> str:
@@ -127,6 +119,130 @@ class MCP:
             raise RuntimeError(f"Query failed: {e}") from e
         except Exception as e:
             logger.exception(f"Unexpected error during kb_answer for '{kb}': {e}")
+            raise RuntimeError(f"An unexpected error occurred: {e}") from e
+
+        return _wrap_result(answer)
+
+    async def query_local(self,
+        kb: Annotated[str, Field(description="Knowledge base to query")],
+        query: Annotated[str, Field(description="Natural-language query.")],
+    ) -> str:
+        """
+        Simplified local mode query - Best for entity-specific queries.
+        
+        Local mode focuses on entity-centric retrieval and is excellent for questions like:
+        - "What are the specific network security tools mentioned?"
+        - "Which processes are relevant to vulnerability management?"
+        
+        Uses optimized defaults: mode='local', top_k=30, LLM generation, multiple paragraphs.
+        """
+        logger.info(f"Executing query_local for KB '{kb}'")
+        
+        # Fixed optimal parameters for local mode
+        query_kwargs = {
+            'mode': 'local',
+            'top_k': 30,
+            'response_type': 'Multiple Paragraphs',
+            'only_need_context': False
+        }
+        
+        try:
+            answer: str = await self.rag_manager.query(
+                kb_name=kb,
+                query_text=query,
+                **query_kwargs
+            )
+        except (KnowledgeBaseNotFoundError, ConfigurationError) as e:
+            logger.error(f"Configuration or KB not found error during query_local for '{kb}': {e}")
+            raise ValueError(str(e)) from e
+        except RAGManagerError as e:
+            logger.error(f"Runtime RAG error during query_local for '{kb}': {e}", exc_info=True)
+            raise RuntimeError(f"Query failed: {e}") from e
+        except Exception as e:
+            logger.exception(f"Unexpected error during query_local for '{kb}': {e}")
+            raise RuntimeError(f"An unexpected error occurred: {e}") from e
+
+        return _wrap_result(answer)
+
+    async def query_global(self,
+        kb: Annotated[str, Field(description="Knowledge base to query")],
+        query: Annotated[str, Field(description="Natural-language query.")],
+    ) -> str:
+        """
+        Simplified global mode query - Best for relationship discovery.
+        
+        Global mode focuses on relationship-centric retrieval and is valuable for queries like:
+        - "How do network configuration practices relate to security processes?"
+        - "What are the dependencies between different security procedures?"
+        
+        Uses optimized defaults: mode='global', top_k=30, LLM generation, multiple paragraphs.
+        """
+        logger.info(f"Executing query_global for KB '{kb}'")
+        
+        # Fixed optimal parameters for global mode
+        query_kwargs = {
+            'mode': 'global',
+            'top_k': 30,
+            'response_type': 'Multiple Paragraphs',
+            'only_need_context': False
+        }
+        
+        try:
+            answer: str = await self.rag_manager.query(
+                kb_name=kb,
+                query_text=query,
+                **query_kwargs
+            )
+        except (KnowledgeBaseNotFoundError, ConfigurationError) as e:
+            logger.error(f"Configuration or KB not found error during query_global for '{kb}': {e}")
+            raise ValueError(str(e)) from e
+        except RAGManagerError as e:
+            logger.error(f"Runtime RAG error during query_global for '{kb}': {e}", exc_info=True)
+            raise RuntimeError(f"Query failed: {e}") from e
+        except Exception as e:
+            logger.exception(f"Unexpected error during query_global for '{kb}': {e}")
+            raise RuntimeError(f"An unexpected error occurred: {e}") from e
+
+        return _wrap_result(answer)
+
+    async def query_hybrid(self,
+        kb: Annotated[str, Field(description="Knowledge base to query")],
+        query: Annotated[str, Field(description="Natural-language query.")],
+    ) -> str:
+        """
+        Simplified hybrid mode query - Best for cross-domain queries.
+        
+        Hybrid mode combines both entity-focused (local) and relationship-focused (global) retrieval,
+        making it ideal for comprehensive coverage that spans multiple knowledge areas. Perfect for:
+        - Cyber security processes and network configuration queries
+        - Questions requiring both process knowledge and technical implementation details
+        
+        Uses optimized defaults: mode='hybrid', top_k=30, LLM generation, multiple paragraphs.
+        """
+        logger.info(f"Executing query_hybrid for KB '{kb}'")
+        
+        # Fixed optimal parameters for hybrid mode
+        query_kwargs = {
+            'mode': 'hybrid',
+            'top_k': 30,
+            'response_type': 'Multiple Paragraphs',
+            'only_need_context': False
+        }
+        
+        try:
+            answer: str = await self.rag_manager.query(
+                kb_name=kb,
+                query_text=query,
+                **query_kwargs
+            )
+        except (KnowledgeBaseNotFoundError, ConfigurationError) as e:
+            logger.error(f"Configuration or KB not found error during query_hybrid for '{kb}': {e}")
+            raise ValueError(str(e)) from e
+        except RAGManagerError as e:
+            logger.error(f"Runtime RAG error during query_hybrid for '{kb}': {e}", exc_info=True)
+            raise RuntimeError(f"Query failed: {e}") from e
+        except Exception as e:
+            logger.exception(f"Unexpected error during query_hybrid for '{kb}': {e}")
             raise RuntimeError(f"An unexpected error occurred: {e}") from e
 
         return _wrap_result(answer)
