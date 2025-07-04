@@ -25,6 +25,7 @@ class Shell(cmd.Cmd):
         self.rag_manager = rag_manager
         # self.document_manager = DocumentManager(rag_manager)
         self._loop = None
+        self._running_servers = {}  # Track running lightrag servers: {kb_name: subprocess.Popen}
         self._start_background_loop()
 
     def _run_background_loop(self):
@@ -75,12 +76,14 @@ class Shell(cmd.Cmd):
     def do_exit(self, arg: str) -> bool:
         """Exit the shell."""
         print("Exiting shell.")
+        self._cleanup_servers()
         self._stop_background_loop()
         return True # Returning True stops the cmdloop
 
     def do_EOF(self, arg: str) -> bool:
         """Exit the shell when EOF (Ctrl+D) is received."""
         print() # Print a newline for cleaner exit
+        self._cleanup_servers()
         self._stop_background_loop()
         return self.do_exit(arg)
 
@@ -330,3 +333,182 @@ class Shell(cmd.Cmd):
     def do_clear(self, arg: str): 
         """Clear the screen."""
         os.system('cls' if os.name == 'nt' else 'clear')
+
+    def do_server(self, arg: str):
+        """Manage LightRAG servers. Usage: server <kb_name> start|stop|status"""
+        try:
+            args = shlex.split(arg)
+            if len(args) != 2:
+                print('Usage: server <kb_name> start|stop|status')
+                return
+
+            kb_name, action = args
+            
+            if action == 'start':
+                self._start_server(kb_name)
+            elif action == 'stop':
+                self._stop_server(kb_name)
+            elif action == 'status':
+                self._server_status(kb_name)
+            else:
+                print(f"Unknown action '{action}'. Use: start, stop, or status")
+                
+        except Exception as e:
+            logger.exception(f"Error in server command: {e}")
+            print(f"Error: {e}")
+
+    def _start_server(self, kb_name: str):
+        """Start a LightRAG server for the specified knowledge base."""
+        try:
+            # Check if knowledge base exists
+            kb_path = self.kb_manager.base_dir / kb_name
+            if not kb_path.exists():
+                print(f"Error: Knowledge base '{kb_name}' does not exist.")
+                return
+
+            # Check if server is already running
+            if kb_name in self._running_servers:
+                process = self._running_servers[kb_name]
+                if process.poll() is None:  # Process is still running
+                    print(f"Server for '{kb_name}' is already running (PID: {process.pid})")
+                    return
+                else:
+                    # Process has terminated, remove from tracking
+                    del self._running_servers[kb_name]
+
+            # Get config for environment variables
+            from knowledge_mcp.config import Config
+            config = Config.get_instance()
+            
+            # Set up environment variables from config
+            env = os.environ.copy()
+            
+            # LLM configuration
+            llm_config = config.lightrag.llm
+            env['LLM_BINDING'] = llm_config.provider
+            env['LLM_MODEL'] = llm_config.model_name
+            env['LLM_BINDING_API_KEY'] = llm_config.api_key
+            if llm_config.api_base:
+                env['LLM_BINDING_HOST'] = llm_config.api_base
+            
+            # Embedding configuration
+            embedding_config = config.lightrag.embedding
+            env['EMBEDDING_BINDING'] = embedding_config.provider
+            env['EMBEDDING_MODEL'] = embedding_config.model_name
+            env['EMBEDDING_BINDING_API_KEY'] = embedding_config.api_key
+            if embedding_config.api_base:
+                env['EMBEDDING_BINDING_HOST'] = embedding_config.api_base
+            env['EMBEDDING_DIM'] = str(embedding_config.embedding_dim)
+
+            # Start the lightrag-server process
+            cmd = ['lightrag-server', '--working-dir', str(kb_path)]
+            print(f"Starting LightRAG server for '{kb_name}'...")
+            print(f"Command: {' '.join(cmd)}")
+            print(f"Working directory: {kb_path}")
+            
+            process = subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            # Track the running process
+            self._running_servers[kb_name] = process
+            print(f"Server started for '{kb_name}' (PID: {process.pid})")
+            print("Note: Server output is captured. Use 'server <kb_name> status' to check if it's running.")
+            
+        except Exception as e:
+            logger.exception(f"Failed to start server for {kb_name}: {e}")
+            print(f"Failed to start server: {e}")
+
+    def _stop_server(self, kb_name: str):
+        """Stop the LightRAG server for the specified knowledge base."""
+        try:
+            if kb_name not in self._running_servers:
+                print(f"No server running for '{kb_name}'")
+                return
+
+            process = self._running_servers[kb_name]
+            if process.poll() is not None:
+                # Process has already terminated
+                print(f"Server for '{kb_name}' is not running")
+                del self._running_servers[kb_name]
+                return
+
+            print(f"Stopping server for '{kb_name}' (PID: {process.pid})...")
+            process.terminate()
+            
+            # Wait for graceful shutdown
+            try:
+                process.wait(timeout=5)
+                print(f"Server for '{kb_name}' stopped gracefully")
+            except subprocess.TimeoutExpired:
+                print(f"Server for '{kb_name}' did not stop gracefully, forcing termination...")
+                process.kill()
+                process.wait()
+                print(f"Server for '{kb_name}' forcefully terminated")
+            
+            del self._running_servers[kb_name]
+            
+        except Exception as e:
+            logger.exception(f"Failed to stop server for {kb_name}: {e}")
+            print(f"Failed to stop server: {e}")
+
+    def _server_status(self, kb_name: str):
+        """Check the status of the LightRAG server for the specified knowledge base."""
+        try:
+            if kb_name not in self._running_servers:
+                print(f"No server tracked for '{kb_name}'")
+                return
+
+            process = self._running_servers[kb_name]
+            if process.poll() is None:
+                print(f"Server for '{kb_name}' is running (PID: {process.pid})")
+            else:
+                print(f"Server for '{kb_name}' has terminated (exit code: {process.returncode})")
+                del self._running_servers[kb_name]
+                
+        except Exception as e:
+            logger.exception(f"Failed to check server status for {kb_name}: {e}")
+            print(f"Failed to check server status: {e}")
+
+    def _cleanup_servers(self):
+        """Stop all running servers before exiting."""
+        if not self._running_servers:
+            return
+            
+        print("Stopping running servers...")
+        for kb_name in list(self._running_servers.keys()):
+            try:
+                process = self._running_servers[kb_name]
+                if process.poll() is None:  # Still running
+                    print(f"Stopping server for '{kb_name}'...")
+                    process.terminate()
+                    try:
+                        process.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                del self._running_servers[kb_name]
+            except Exception as e:
+                logger.exception(f"Error stopping server for {kb_name}: {e}")
+        print("All servers stopped.")
+
+    def help_server(self):
+        """Help for the server command."""
+        print("""Manage LightRAG servers for knowledge bases.
+
+Usage:
+  server <kb_name> start   - Start a LightRAG server for the knowledge base
+  server <kb_name> stop    - Stop the running server for the knowledge base
+  server <kb_name> status  - Check if the server is running
+
+Examples:
+  server csl start    - Start server for 'csl' knowledge base
+  server csl status   - Check if 'csl' server is running
+  server csl stop     - Stop the 'csl' server
+
+Note: The server uses configuration from config.yaml instead of .env files.
+Environment variables are set automatically from your LLM and embedding config.""")

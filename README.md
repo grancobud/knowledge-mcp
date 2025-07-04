@@ -186,3 +186,7 @@ or
 ```
 npx @modelcontextprotocol/inspector uvx --project . knowledge-mcp "--config ./kbs/config.yaml mcp
 ```
+4. Convenience dev scripts
+Assumes a local config file at `./kbs/config.yaml`
+* `uvx shell` - Starts the interactive shell
+* `uvx insp` - Starts the MCP Inspector

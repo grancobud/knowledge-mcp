@@ -9,6 +9,8 @@ from lightrag.base import DeletionResult
 from lightrag.kg.shared_storage import initialize_pipeline_status
 from typing import Dict, Optional, Any
 import asyncio
+import shutil
+from pathlib import Path
 
 # Need to import Config and KbManager to use them
 from knowledge_mcp.config import Config
@@ -246,6 +248,25 @@ class RagManager:
             logging.getLogger(f"kbmcp.{kb_name}").exception(f"Unexpected error during async query execution for KB '{kb_name}': {e}")
             raise RAGManagerError(f"Async query failed: {e}") from e
 
+    def _cleanup_output_directory(self, output_dir: Path, kb_logger: logging.Logger) -> None:
+        """Clean up all contents of the output directory after successful ingestion."""
+        try:
+            if output_dir.exists() and output_dir.is_dir():
+                # Remove all contents of the output directory
+                for item in output_dir.iterdir():
+                    if item.is_file():
+                        item.unlink()
+                        kb_logger.debug(f"Deleted file: {item.name}")
+                    elif item.is_dir():
+                        shutil.rmtree(item)
+                        kb_logger.debug(f"Deleted directory: {item.name}")
+                kb_logger.info("Successfully cleaned up output directory")
+            else:
+                kb_logger.debug("Output directory does not exist or is not a directory")
+        except Exception as e:
+            kb_logger.warning(f"Failed to clean up output directory: {e}")
+            # Don't raise exception as cleanup failure shouldn't fail the ingestion
+
     async def ingest_document(self, kb_name: str, file_path: Any, doc_id: Optional[str] = None) -> Optional[str]:
         """Ingests a document into the specified knowledge base."""
         kb_logger = logging.getLogger(f"kbmcp.{kb_name}") # Get logger once for this method
@@ -271,6 +292,10 @@ class RagManager:
             # We might need to generate/manage IDs separately if required.
             
             kb_logger.info(f"Successfully ingested document '{file_path.name}' as '{generated_doc_id}'")
+            
+            # Clean up output directory after successful ingestion
+            self._cleanup_output_directory(output_dir, kb_logger)
+            
             return generated_doc_id
         
         except RAGInitializationError as e:
