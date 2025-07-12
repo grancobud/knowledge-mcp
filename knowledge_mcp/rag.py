@@ -170,6 +170,37 @@ class RagManager:
             # Wrap unexpected errors in a specific exception type
             raise RAGInitializationError(f"Failed to initialize LightRAG for {kb_name}: {e}") from e
 
+    async def get_lightrag_instance(self, kb_name: str) -> LightRAG:
+        """Get the underlying LightRAG instance from RAGAnything for direct access.
+        
+        This method provides direct access to the LightRAG instance for text-only
+        operations that don't require RAGAnything's multimodal capabilities.
+        
+        Args:
+            kb_name: The name of the knowledge base.
+            
+        Returns:
+            The underlying LightRAG instance.
+            
+        Raises:
+            KnowledgeBaseNotFoundError: If the knowledge base doesn't exist.
+            RAGInitializationError: If the RAG instance cannot be retrieved.
+        """
+        try:
+            # Get the RAGAnything instance (this will create it if it doesn't exist)
+            rag_anything = await self.get_rag_instance(kb_name)
+            
+            # Access the underlying LightRAG instance
+            lightrag_instance = rag_anything.lightrag
+            
+            logging.getLogger(f"kbmcp.{kb_name}").debug("Retrieved underlying LightRAG instance for direct access.")
+            return lightrag_instance
+            
+        except Exception as e:
+            msg = f"Failed to get LightRAG instance for {kb_name}: {e}"
+            logging.getLogger(f"kbmcp.{kb_name}").error(msg)
+            raise RAGInitializationError(msg) from e
+
     def remove_rag_instance(self, kb_name: str | None = None) -> None:
         """Removes a rag instance by name"""
         if kb_name:
@@ -267,36 +298,81 @@ class RagManager:
             kb_logger.warning(f"Failed to clean up output directory: {e}")
             # Don't raise exception as cleanup failure shouldn't fail the ingestion
 
-    async def ingest_document(self, kb_name: str, file_path: Any, doc_id: Optional[str] = None) -> Optional[str]:
-        """Ingests a document into the specified knowledge base."""
+    async def ingest_document(self, kb_name: str, file_path: Any, doc_id: Optional[str] = None, parse_method: str = "auto", text_content: Optional[str] = None) -> Optional[str]:
+        """Ingests a document into the specified knowledge base.
+        
+        Args:
+            kb_name: The name of the knowledge base.
+            file_path: Path to the document file.
+            doc_id: Optional document ID. If not provided, uses file name.
+            parse_method: Parsing method to use. Options:
+                - "auto": Automatically choose based on available parameters (default)
+                - "multimodal": Use RAGAnything for full multimodal processing
+                - "text": Use LightRAG directly for text-only processing (requires text_content)
+            text_content: Pre-extracted text content. Required when parse_method="text".
+            
+        Returns:
+            The document ID used for ingestion.
+            
+        Raises:
+            ValueError: If parse_method="text" but text_content is not provided.
+            RAGInitializationError: If the RAG instance cannot be retrieved.
+            RAGManagerError: If ingestion fails.
+        """
         kb_logger = logging.getLogger(f"kbmcp.{kb_name}") # Get logger once for this method
-        kb_logger.info(f"Ingesting document '{file_path.name}' into KB '{kb_name}'...")
-        kb_path = self.kb_manager.get_kb_path(kb_name)
-        output_dir = kb_path / "output"
-        output_dir.mkdir(exist_ok=True)  # Ensure output directory exists
+        kb_logger.info(f"Ingesting document '{file_path.name}' into KB '{kb_name}' using {parse_method} method...")
+        
+        # Validate parse_method and parameters
+        if parse_method == "text" and text_content is None:
+            raise ValueError("text_content parameter is required when parse_method='text'")
+        
+        # Auto-select parse method if requested
+        if parse_method == "auto":
+            if text_content is not None:
+                parse_method = "text"
+                kb_logger.info("Auto-selected 'text' parsing method (text_content provided)")
+            else:
+                parse_method = "multimodal"
+                kb_logger.info("Auto-selected 'multimodal' parsing method (no text_content provided)")
+        
         generated_doc_id = doc_id or file_path.name 
 
         try:
-            # Get instance asynchronously
-            rag_instance = await self.get_rag_instance(kb_name)
+            # Route to appropriate ingestion method based on parse_method
+            if parse_method == "text":
+                # Use text-only ingestion with LightRAG directly
+                kb_logger.debug(f"Routing to text-only ingestion for '{generated_doc_id}'...")
+                return await self.ingest_text_only(kb_name, text_content, generated_doc_id)
             
-            kb_logger.debug(f"Running ingest for {file_path}...")
-            await rag_instance.process_document_complete(
-                file_path=str(file_path),
-                output_dir=str(output_dir),     
-                parse_method="auto",
-                doc_id=generated_doc_id 
-            )
-
-            # Assuming ingest_doc doesn't directly return a useful ID in this version
-            # We might need to generate/manage IDs separately if required.
+            elif parse_method == "multimodal":
+                # Use multimodal ingestion with RAGAnything
+                kb_logger.debug(f"Routing to multimodal ingestion for '{generated_doc_id}'...")
+                
+                # Set up output directory for multimodal processing
+                kb_path = self.kb_manager.get_kb_path(kb_name)
+                output_dir = kb_path / "output"
+                output_dir.mkdir(exist_ok=True)  # Ensure output directory exists
+                
+                # Get RAGAnything instance
+                rag_instance = await self.get_rag_instance(kb_name)
+                
+                kb_logger.debug(f"Running multimodal ingest for {file_path}...")
+                await rag_instance.process_document_complete(
+                    file_path=str(file_path),
+                    output_dir=str(output_dir),     
+                    parse_method="auto",  # Let RAGAnything handle its own parsing logic
+                    doc_id=generated_doc_id 
+                )
+                
+                kb_logger.info(f"Successfully ingested document '{file_path.name}' as '{generated_doc_id}' using multimodal processing")
+                
+                # Clean up output directory after successful ingestion
+                self._cleanup_output_directory(output_dir, kb_logger)
+                
+                return generated_doc_id
             
-            kb_logger.info(f"Successfully ingested document '{file_path.name}' as '{generated_doc_id}'")
-            
-            # Clean up output directory after successful ingestion
-            self._cleanup_output_directory(output_dir, kb_logger)
-            
-            return generated_doc_id
+            else:
+                raise ValueError(f"Unsupported parse_method: {parse_method}. Use 'text' or 'multimodal'.")
         
         except RAGInitializationError as e:
             logging.getLogger(f"kbmcp.{kb_name}").error(f"Cannot ingest, RAG instance failed to initialize: {e}") # Use dynamic logger for exceptions too
@@ -308,6 +384,53 @@ class RagManager:
             logging.getLogger(f"kbmcp.{kb_name}").exception(f"Failed to ingest document '{file_path.name}': {e}")
             # Consider wrapping in a specific IngestionError if needed
             raise RAGManagerError(f"Ingestion failed for '{file_path.name}': {e}") from e
+
+    async def ingest_text_only(self, kb_name: str, text_content: str, doc_id: Optional[str] = None) -> Optional[str]:
+        """Ingests text content directly into the knowledge base using LightRAG only.
+        
+        This method bypasses RAGAnything's multimodal processing and uses LightRAG
+        directly for text-only ingestion. This is more efficient for pre-extracted
+        text content (e.g., from MarkItDown).
+        
+        Args:
+            kb_name: The name of the knowledge base.
+            text_content: The text content to ingest.
+            doc_id: Optional document ID. If not provided, a UUID will be generated.
+            
+        Returns:
+            The document ID used for ingestion.
+            
+        Raises:
+            RAGInitializationError: If the LightRAG instance cannot be retrieved.
+            RAGManagerError: If ingestion fails.
+        """
+        import uuid
+        
+        kb_logger = logging.getLogger(f"kbmcp.{kb_name}")
+        generated_doc_id = doc_id or str(uuid.uuid4())
+        
+        kb_logger.info(f"Ingesting text content directly into KB '{kb_name}' as '{generated_doc_id}'...")
+        kb_logger.debug(f"Text content length: {len(text_content):,} characters")
+        
+        try:
+            # Get the underlying LightRAG instance for direct text ingestion
+            lightrag_instance = await self.get_lightrag_instance(kb_name)
+            
+            kb_logger.debug(f"Running direct LightRAG text ingestion for '{generated_doc_id}'...")
+            
+            # Use LightRAG's direct text ingestion method
+            # Note: LightRAG typically uses ainsert() for text ingestion
+            await lightrag_instance.ainsert(text_content, ids=[generated_doc_id], file_paths=[generated_doc_id])
+            
+            kb_logger.info(f"Successfully ingested text content as '{generated_doc_id}' using LightRAG directly")
+            return generated_doc_id
+            
+        except RAGInitializationError as e:
+            kb_logger.error(f"Cannot ingest text, LightRAG instance failed to initialize: {e}")
+            raise # Re-raise the initialization error
+        except Exception as e:
+            kb_logger.exception(f"Failed to ingest text content as '{generated_doc_id}': {e}")
+            raise RAGManagerError(f"Text-only ingestion failed for '{generated_doc_id}': {e}") from e
 
     async def remove_document(self, kb_name: str, doc_id: str) -> DeletionResult:
         """Removes a document from the specified knowledge base by its ID."""
