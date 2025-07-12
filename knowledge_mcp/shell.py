@@ -10,7 +10,7 @@ import subprocess
 
 from knowledge_mcp.knowledgebases import KnowledgeBaseManager, KnowledgeBaseExistsError, KnowledgeBaseNotFoundError, KnowledgeBaseError
 from knowledge_mcp.rag import RagManager, RAGInitializationError, ConfigurationError, RAGManagerError, DeletionResult
-# from knowledge_mcp.documents import DocumentManager
+from knowledge_mcp.documents import DocumentManager
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class Shell(cmd.Cmd):
         super().__init__(stdout=stdout)
         self.kb_manager = kb_manager
         self.rag_manager = rag_manager
-        # self.document_manager = DocumentManager(rag_manager)
+        self.document_manager = DocumentManager(rag_manager)
         self._loop = None
         self._running_servers = {}  # Track running lightrag servers: {kb_name: subprocess.Popen}
         self._start_background_loop()
@@ -250,11 +250,51 @@ class Shell(cmd.Cmd):
     # --- Document Management Commands ---
 
     def do_add(self, arg: str):
-        """Add a document to a knowledge base. Usage: add <kb_name> <file_path>"""
+        """Add a document to a knowledge base. Usage: add <kb_name> <file_path> [method]"""
         try:
             args = shlex.split(arg)
             if not 2 <= len(args) <= 3:
-                print("Usage: add <kb_name> <file_path>")
+                print("Usage: add <kb_name> <file_path> [method:auto|multimodal|text|txt|ocr]")
+                return
+
+            kb_name = args[0]
+            file_path_str = args[1]
+            parse_method = args[2] if len(args) == 3 else "auto"
+
+            file_path = Path(file_path_str)
+            if not file_path.is_file():
+                print(f"Error: File not found at '{file_path_str}'")
+                return
+
+            # Map legacy parse_method values to new method parameter
+            method_mapping = {
+                "auto": "multimodal",
+                "multimodal": "multimodal", 
+                "txt": "text",
+                "text": "text",
+                "ocr": "text"  # OCR is closest to text-only processing
+            }
+            
+            method = method_mapping.get(parse_method, "multimodal")
+            print(f"Adding document '{file_path.name}' to KB '{kb_name}' using '{method}' processing...")
+            
+            self._run_async_task(self.document_manager.add(file_path, kb_name, method=method))
+            print(f"Document added successfully using '{method}' processing.")
+
+        except KnowledgeBaseNotFoundError:
+            print(f"Error: Knowledge base '{kb_name}' not found.")
+        except FileNotFoundError:
+            print(f"Error: Document file path '{file_path_str}' not found.")
+        except Exception as e:
+            logger.exception(f"Unexpected error in add: {e}")
+            print(f"An unexpected error occurred: {e}")
+
+    def do_add_multimodal(self, arg: str):
+        """Add a document using multimodal processing. Usage: add_multimodal <kb_name> <file_path>"""
+        try:
+            args = shlex.split(arg)
+            if len(args) != 2:
+                print("Usage: add_multimodal <kb_name> <file_path>")
                 return
 
             kb_name = args[0]
@@ -265,17 +305,44 @@ class Shell(cmd.Cmd):
                 print(f"Error: File not found at '{file_path_str}'")
                 return
 
-            print(f"Adding document '{file_path.name}' to KB '{kb_name}'...")
-            # added_doc_id = asyncio.run(self.document_manager.add(file_path, kb_name))
-            added_doc_id = self._run_async_task(self.rag_manager.ingest_document(kb_name, file_path))
-            print(f"Document added successfully with ID: {added_doc_id}")
+            print(f"Adding document '{file_path.name}' to KB '{kb_name}' using multimodal processing...")
+            self._run_async_task(self.document_manager.add_multimodal(file_path, kb_name))
+            print("Document added successfully using multimodal processing.")
 
         except KnowledgeBaseNotFoundError:
             print(f"Error: Knowledge base '{kb_name}' not found.")
         except FileNotFoundError:
             print(f"Error: Document file path '{file_path_str}' not found.")
         except Exception as e:
-            logger.exception(f"Unexpected error in add: {e}")
+            logger.exception(f"Unexpected error in add_multimodal: {e}")
+            print(f"An unexpected error occurred: {e}")
+
+    def do_add_text(self, arg: str):
+        """Add a document using text-only processing. Usage: add_text <kb_name> <file_path>"""
+        try:
+            args = shlex.split(arg)
+            if len(args) != 2:
+                print("Usage: add_text <kb_name> <file_path>")
+                return
+
+            kb_name = args[0]
+            file_path_str = args[1]
+
+            file_path = Path(file_path_str)
+            if not file_path.is_file():
+                print(f"Error: File not found at '{file_path_str}'")
+                return
+
+            print(f"Adding document '{file_path.name}' to KB '{kb_name}' using text-only processing...")
+            self._run_async_task(self.document_manager.add_text_only(file_path, kb_name))
+            print("Document added successfully using text-only processing.")
+
+        except KnowledgeBaseNotFoundError:
+            print(f"Error: Knowledge base '{kb_name}' not found.")
+        except FileNotFoundError:
+            print(f"Error: Document file path '{file_path_str}' not found.")
+        except Exception as e:
+            logger.exception(f"Unexpected error in add_text: {e}")
             print(f"An unexpected error occurred: {e}")
 
     def do_remove(self, arg: str):
