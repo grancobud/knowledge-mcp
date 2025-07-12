@@ -92,7 +92,7 @@ Configuration is managed via YAML files:
     env_file: .env # path to .env file
     ```
 
-2.  **Knowledge Base Specific Configuration (`<base_dir>/<kb_name>/config.yaml`):** Contains parameters specific to querying *that* knowledge base, such as the LightRAG query `mode`, `top_k` results, context token limits, etc. This file is automatically created with defaults when a KB is created and can be viewed/edited using the `config` CLI command.
+2.  **Knowledge Base Specific Configuration (`<base_dir>/<kb_name>/config.yaml`):** Contains parameters specific to querying *that* knowledge base, such as the LightRAG query `mode` (default: "hybrid"), `top_k` results (default: 40), context token limits, `text_only` parsing mode, and `user_prompt` for response formatting. This file is automatically created with defaults when a KB is created and can be viewed/edited using the `config` CLI command.
 
 3.  **Knowledge Base Directory Structure:** When you create knowledge bases, they are stored within the directory specified by `knowledge_base.base_dir` in your main `config.yaml`. The structure typically looks like this:
 
@@ -109,7 +109,138 @@ Configuration is managed via YAML files:
         ├── <storage_files>
     ```
 
-## 5. Usage (CLI)
+## 5. New Features
+
+### 5.1 Text-Only Document Parsing
+
+By default, knowledge-mcp processes documents using both text content and metadata (like document structure, formatting, etc.). You can now configure knowledge bases to use **text-only parsing** for faster processing and reduced token usage.
+
+**Benefits:**
+- Faster document processing
+- Lower LLM token consumption
+- Simplified content extraction
+- Better performance with large document collections
+
+**Configuration:**
+Add `text_only: true` to your knowledge base's `config.yaml`:
+
+```yaml
+# In <base_dir>/<kb_name>/config.yaml
+description: "My knowledge base with text-only parsing"
+mode: "hybrid"
+top_k: 40
+text_only: true  # Enable text-only parsing
+```
+
+**Usage:**
+```bash
+# Create a new KB and configure it for text-only parsing
+knowledge-mcp --config config.yaml create my_text_kb
+knowledge-mcp --config config.yaml config my_text_kb edit
+# Add text_only: true to the config file
+
+# Add documents - they will be processed with text-only parsing
+knowledge-mcp --config config.yaml add my_text_kb ./documents/
+```
+
+### 5.2 Configurable User Prompts
+
+You can now customize how the LLM formats and structures its responses for each knowledge base by configuring a `user_prompt`. This allows you to tailor the response style to match your specific use case.
+
+**Benefits:**
+- Consistent response formatting across queries
+- Domain-specific response styles
+- Better integration with downstream applications
+- Improved user experience
+
+**Configuration:**
+Add a `user_prompt` field to your knowledge base's `config.yaml`. The prompt supports multi-line YAML syntax:
+
+```yaml
+# In <base_dir>/<kb_name>/config.yaml
+description: "Technical documentation KB"
+mode: "hybrid"
+top_k: 40
+user_prompt: |
+  Please format your response as follows:
+  
+  ## Summary
+  Provide a brief 2-3 sentence summary of the key points.
+  
+  ## Detailed Answer
+  Give a comprehensive explanation with specific details.
+  
+  ## Key Takeaways
+  - List 3-5 bullet points with the most important insights
+  - Focus on actionable information
+  
+  Keep your response clear, concise, and well-organized.
+```
+
+**Example Configurations:**
+
+1. **Business-Focused Format:**
+```yaml
+user_prompt: |
+  Structure your response for business stakeholders:
+  
+  **Executive Summary** (2-3 sentences)
+  Brief overview of the main points and business impact.
+  
+  **Key Findings**
+  • Most critical insights
+  • Relevant metrics or data points
+  • Risk factors or opportunities
+  
+  **Recommendations**
+  • Specific actionable steps
+  • Priority levels (High/Medium/Low)
+  • Expected outcomes
+```
+
+2. **Technical Documentation Style:**
+```yaml
+user_prompt: |
+  You are a technical documentation expert. Please structure your response with:
+  
+  1. **Context**: Brief background on the topic
+  2. **Implementation**: Step-by-step technical details
+  3. **Best Practices**: Recommended approaches and common pitfalls
+  4. **Examples**: Concrete code examples or use cases where applicable
+  
+  Use clear headings, bullet points, and code blocks for readability.
+```
+
+3. **Academic Research Style:**
+```yaml
+user_prompt: |
+  Please provide a scholarly response that includes:
+  
+  • **Introduction**: Context and scope of the topic
+  • **Analysis**: Critical examination of key concepts and evidence
+  • **Synthesis**: How different pieces of information connect
+  • **Conclusion**: Main findings and implications
+  
+  Support your points with specific references from the knowledge base.
+```
+
+**Usage:**
+```bash
+# Configure user prompt for an existing KB
+knowledge-mcp --config config.yaml config my_kb edit
+# Add your user_prompt configuration to the YAML file
+
+# Query the KB - responses will follow your configured format
+knowledge-mcp --config config.yaml query my_kb "What are the main concepts?"
+```
+
+**Notes:**
+- User prompts are applied automatically to all queries for that knowledge base
+- Leave `user_prompt` empty or omit it to use default LLM behavior
+- Changes take effect immediately - no need to rebuild the knowledge base
+- Backward compatible - existing knowledge bases continue to work without modification
+
+## 6. Usage (CLI)
 
 The primary way to interact with `knowledge-mcp` is through its CLI, accessed via the `knowledge-mcp` command (if installed globally or via `uvx knowledge-mcp` within the activated venv).
 
@@ -154,7 +285,7 @@ knowledge-mcp --config config.yaml shell
 (kbmcp) exit
 ```
 
-## 6. Development
+## 7. Development
 1. Project Decisions
 *   **Tech Stack:** Python 3.12, uv (dependency management), hatchling (build system), pytest (testing).
 *   **Setup:** Follow the installation steps, ensuring you install with `uv pip install -e ".[dev]"`.
