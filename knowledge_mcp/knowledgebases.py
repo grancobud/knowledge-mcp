@@ -210,6 +210,7 @@ def load_kb_query_config(kb_path: Path) -> dict[str, Any]:
     """
     config_file_path = kb_path / "config.yaml"
     kb_name = kb_path.name
+    kb_logger = logging.getLogger(f"kbmcp.{kb_name}")  # KB-specific logger for user_prompt messages
     loaded_config: dict[str, Any] = {}
 
     if config_file_path.is_file():
@@ -226,6 +227,16 @@ def load_kb_query_config(kb_path: Path) -> dict[str, Any]:
                         if k in DEFAULT_QUERY_PARAMS and k != "description"
                     }
                     logger.debug(f"Successfully loaded and filtered query config for KB '{kb_name}': {loaded_config}")
+                    
+                    # Log user_prompt specifically if present
+                    if 'user_prompt' in loaded_config:
+                        user_prompt_value = loaded_config['user_prompt']
+                        if user_prompt_value and str(user_prompt_value).strip():
+                            kb_logger.debug(f"Loaded user_prompt: '{user_prompt_value}'")
+                        else:
+                            kb_logger.debug("Empty user_prompt found in config")
+                    else:
+                        kb_logger.debug("No user_prompt configured, will use default empty value")
                 elif loaded_data is None:
                     # Empty file, use defaults (excluding description)
                     logger.warning(f"Config file for KB '{kb_name}' is empty. Using default query parameters.")
@@ -246,6 +257,19 @@ def load_kb_query_config(kb_path: Path) -> dict[str, Any]:
     # Start with defaults, then overwrite with loaded values
     final_config = DEFAULT_QUERY_PARAMS.copy()
     final_config.update(loaded_config)
+    
+    # Validate user_prompt type (defensive programming)
+    # user_prompt always exists due to DEFAULT_QUERY_PARAMS.copy() above
+    if not isinstance(final_config['user_prompt'], str):
+        logger.warning(f"Invalid user_prompt type in KB '{kb_name}' config: {type(final_config['user_prompt'])}. Converting to empty string.")
+        final_config['user_prompt'] = ''
+
+    # Log user_prompt in final config to confirm proper filtering and merging
+    final_user_prompt = final_config.get('user_prompt', '')
+    if final_user_prompt and str(final_user_prompt).strip():
+        kb_logger.debug(f"Final config includes user_prompt: '{final_user_prompt}'")
+    else:
+        kb_logger.debug("Final config has empty user_prompt (using default)")
 
     logger.debug(f"Final query config for KB '{kb_name}': {final_config}")
     return final_config

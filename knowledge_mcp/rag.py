@@ -230,6 +230,13 @@ class RagManager:
             kb_logger.info(f"Loading query configuration from {kb_path / 'config.yaml'}...")
             kb_config = load_kb_query_config(kb_path)
             kb_logger.debug(f"Loaded sync config for '{kb_name}': {kb_config}")
+            
+            # Extract and log user_prompt if present
+            user_prompt = kb_config.get('user_prompt', '')
+            if user_prompt and user_prompt.strip():
+                kb_logger.debug(f"Extracted user_prompt from config: '{user_prompt}'")
+            else:
+                kb_logger.debug("No user_prompt configured or user_prompt is empty")
 
             # Merge configurations: kwargs > kb_config
             final_query_params = kb_config.copy()
@@ -241,12 +248,28 @@ class RagManager:
 
             # Ensure 'description' is not passed as a query param
             final_query_params.pop("description", None)
+            
+            # Handle user_prompt: only include if not empty
+            user_prompt_value = final_query_params.get('user_prompt', '')
+            if not (user_prompt_value and user_prompt_value.strip()):
+                # Remove empty user_prompt to avoid passing it to QueryParam
+                final_query_params.pop('user_prompt', None)
+                kb_logger.debug("Removed empty user_prompt from query parameters")
+            else:
+                kb_logger.debug(f"Including user_prompt in query parameters: '{user_prompt_value}'")
+            
             kb_logger.info(f"Query parameters: {final_query_params}")
 
             # Create QueryParam instance
             try:
                 query_param_instance = QueryParam(**final_query_params)
                 kb_logger.debug(f"Created QueryParam instance: {query_param_instance}")
+                
+                # Log user_prompt inclusion in QueryParam if present
+                if hasattr(query_param_instance, 'user_prompt') and query_param_instance.user_prompt:
+                    kb_logger.debug(f"QueryParam instance includes user_prompt: '{query_param_instance.user_prompt}'")
+                else:
+                    kb_logger.debug("QueryParam instance has no user_prompt (empty or not configured)")
             except Exception as e:
                 kb_logger.error(f"Failed to create QueryParam instance from params {final_query_params}: {e}")
                 raise ConfigurationError(f"Invalid query parameters: {e}") from e
