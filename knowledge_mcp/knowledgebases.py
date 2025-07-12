@@ -15,15 +15,16 @@ logger = logging.getLogger(__name__)
 # Based on the subset specified in Task 12
 DEFAULT_QUERY_PARAMS: dict[str, Any] = {
     "description": "A useful knowledge base", # Add description field
-    "mode": "mix",
+    "mode": "hybrid",
     "only_need_context": False,
     "only_need_prompt": False,
     "response_type": "Multiple Paragraphs",
-    "top_k": 60,
+    "top_k": 40,
     "max_token_for_text_unit": 4000,
     "max_token_for_global_context": 4000,
     "max_token_for_local_context": 4000,
     "history_turns": 3,
+    "user_prompt": "", # User-configurable prompt for LLM response formatting
 }
 
 class KnowledgeBaseError(Exception):
