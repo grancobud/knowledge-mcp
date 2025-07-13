@@ -1,7 +1,3 @@
----
-trigger: always_on
----
-
 # Coding
 
 ## Pythonic Practices
