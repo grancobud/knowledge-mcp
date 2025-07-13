@@ -1,8 +1,7 @@
 # Ignore Patterns
-archive/
 CLAUDE.md
 .aider*
-data/
+attic/
 docs/
 
 # Coding
@@ -36,10 +35,9 @@ docs/
 
 # Using Tools (MCP)
 - Use the sequential-thinking tool if the problem is complex and you need to think hard, you need to think step by step. This is mandatory.
-- Use the available docs tools to look up the documentation notation. "LightRAG Docs" and "FastMCP Docs"
-- Use the fetch tool to fetch the content of web pages, i.e. from an llms.txt sitemap
+- Use the context7 tool to look up the documentation of a library. 
 
 # Project
-- Project sepecification is in _project directory: 
+- Project sepecification is in the specs directory: 
   - prd.md: project requirements
   - plan.md: development plan
