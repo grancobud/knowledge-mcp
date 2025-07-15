@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class Shell(cmd.Cmd):
     """Interactive shell for Knowledge MCP."""
-    intro = 'Welcome to the Knowledge MCP shell. Type help or ? to list commands.\n'
+    intro = 'Welcome to the Knowledge MCP 0.3.2 shell. Type help or ? to list commands.\n'
     prompt = '(kbmcp) '
 
     def __init__(self, kb_manager: KnowledgeBaseManager, rag_manager: RagManager, stdout=None):

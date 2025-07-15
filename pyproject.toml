@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-mcp"
-version = "0.3.0"
+version = "0.3.2"
 description = "A MCP server designed to bridge the gap between specialized knowledge domains and AI assistants."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

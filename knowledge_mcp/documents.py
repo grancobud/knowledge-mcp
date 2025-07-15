@@ -1,7 +1,7 @@
 """Handles document loading, processing, and ingestion into knowledge bases."""
 import logging
 from pathlib import Path
-from markitdown import MarkItDown
+from markitdown import MarkItDown, StreamInfo
 from knowledge_mcp.rag import RagManager 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class DocumentManager:
         """Initializes the DocumentManager."""
         self.rag_manager = rag_manager
         self.markitdown = MarkItDown()
-        logger.info("DocumentManager initialized with MarkItDown.")
+        logger.info("DocumentManager initialized with MarkItDown and UTF-8 charset support.")
 
     def _extract_text(self, doc_path: Path) -> str:
         """Extracts text content from a document using MarkItDown.
@@ -78,7 +78,16 @@ class DocumentManager:
         
         try:
             logger.debug(f"Calling MarkItDown.convert() for: {doc_path}")
-            result = self.markitdown.convert(str(doc_path))
+            
+            # Create StreamInfo with UTF-8 charset for better encoding handling
+            stream_info = StreamInfo(
+                charset='utf-8',
+                filename=doc_path.name,
+                local_path=str(doc_path),
+                extension=file_ext
+            )
+            
+            result = self.markitdown.convert(str(doc_path), stream_info=stream_info)
             
             # Extract and validate content
             text_content = result.text_content
