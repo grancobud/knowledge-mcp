@@ -1255,7 +1255,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-mcp"
-version = "0.3.1"
+version = "0.3.3"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
@@ -1292,7 +1292,7 @@ dev = [
 requires-dist = [
     { name = "fastmcp", specifier = ">=2.2.1" },
     { name = "graspologic", specifier = ">=3.4.1" },
-    { name = "lightrag-hku", extras = ["api"], specifier = ">=1.3.9" },
+    { name = "lightrag-hku", extras = ["api"], specifier = ">=1.4.0" },
     { name = "markitdown", extras = ["all", "pdf"], specifier = ">=0.1.2" },
     { name = "mineru", specifier = ">=2.0.6" },
     { name = "nano-vectordb", specifier = ">=0.0.4.3" },
@@ -1319,12 +1319,14 @@ dev = [
 
 [[package]]
 name = "lightrag-hku"
-version = "1.3.9"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "configparser" },
+    { name = "dotenv" },
     { name = "future" },
+    { name = "numpy" },
     { name = "pandas" },
     { name = "pipmaster" },
     { name = "pydantic" },
@@ -1335,9 +1337,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "xlsxwriter" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/c7/5df3f992bfbf703a9c051f810307162f8f931e964ea2210b31b607a83004/lightrag_hku-1.3.9.tar.gz", hash = "sha256:0e684281926440285097c3c2cf04148b2eb20c3864a52dbc06fb516c53fa9add", size = 2625100, upload-time = "2025-06-24T07:33:43.554Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/43/6ffc4ef37ce2950aaf74ce807a22511a63cbc2aa6ffc03cb45b5127ac8e5/lightrag_hku-1.4.0.tar.gz", hash = "sha256:94a3729c9800d83dd9469f057ef206b2993ad7aa7e6863fe6152196da8b78e08", size = 2667790, upload-time = "2025-07-15T18:39:46.586Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/45/4fff45bf2596cba7af66e12fedd6d540c97ba155d2678e058c1dda06d21a/lightrag_hku-1.3.9-py3-none-any.whl", hash = "sha256:84270e942b7e8f3e962cd9ef9efa5291710fdb92e7143973aea2b3ebde0900b0", size = 2652231, upload-time = "2025-06-24T07:33:41.158Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/90/7ffed12468087c63444afdb052c4de3750fb9e39d4fbe513dfee86ceb08c/lightrag_hku-1.4.0-py3-none-any.whl", hash = "sha256:afa00f6e4496647d5e9909985022a61c3a471bdfe94b10635b0e9ff6908d83c6", size = 2694000, upload-time = "2025-07-15T18:39:44.858Z" },
 ]
 
 [package.optional-dependencies]
@@ -1351,7 +1353,6 @@ api = [
     { name = "dotenv" },
     { name = "fastapi" },
     { name = "future" },
-    { name = "graspologic" },
     { name = "httpcore" },
     { name = "httpx" },
     { name = "jiter" },

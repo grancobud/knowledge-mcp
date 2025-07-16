@@ -1,7 +1,10 @@
 import argparse
+import asyncio
 import logging
 import logging.config
 import sys
+import warnings
+import os
 
 # Updated relative imports
 from knowledge_mcp.config import Config
@@ -48,6 +51,121 @@ def run_shell_mode():
         logger.info("Stopping background server (placeholder)...")
         logger.info("Manage mode finished.")
 
+
+def execute_query(kb_name: str, query_text: str, rag_manager=None, output_file=None, async_task_runner=None):
+    """Execute a query against a knowledge base.
+    
+    Args:
+        kb_name: Name of the knowledge base
+        query_text: Query text to search for
+        rag_manager: Optional RAG manager instance (if None, will create one)
+        output_file: Optional file object for output (defaults to sys.stdout)
+        async_task_runner: Optional function to run async tasks (for shell integration)
+    
+    Returns:
+        Query result string
+    
+    Raises:
+        Exception: If query fails
+    """
+    if output_file is None:
+        output_file = sys.stdout
+    
+    # Initialize components if rag_manager not provided
+    if rag_manager is None:
+        kb_manager, rag_manager = initialize_components(Config.get_instance())
+    
+    print(f"\nQuerying KB '{kb_name}' with: \"{query_text}\"", file=output_file)
+    print(" [running query] ...", end="", flush=True, file=output_file)
+    
+    try:
+        if async_task_runner:
+            # For shell - use the provided async task runner
+            result = async_task_runner(rag_manager.query(kb_name, query_text))
+        else:
+            # For CLI - create and manage our own event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                result = loop.run_until_complete(rag_manager.query(kb_name, query_text))
+            finally:
+                _cleanup_event_loop(loop)
+        
+        print(" [done]", file=output_file)
+        print("\n--- Query Result ---", file=output_file)
+        print(result, file=output_file)
+        print("--- End Result ---", file=output_file)
+        return result
+        
+    except Exception as e:
+        print(" [failed]", file=output_file)
+        print(f"\nError querying KB '{kb_name}': {e}", file=output_file)
+        logger.error(f"Query failed for {kb_name}: {e}")
+        raise
+
+
+def _cleanup_event_loop(loop):
+    """Clean up an event loop and suppress warnings from background tasks."""
+    if loop and not loop.is_closed():
+        try:
+            # Suppress warnings during cleanup
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                
+                # Cancel all pending tasks
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    if not task.done():
+                        task.cancel()
+                
+                # Give tasks a moment to cancel
+                if pending:
+                    try:
+                        loop.run_until_complete(
+                            asyncio.wait_for(
+                                asyncio.gather(*pending, return_exceptions=True),
+                                timeout=1.0
+                            )
+                        )
+                    except (asyncio.TimeoutError, Exception):
+                        pass  # Ignore cleanup errors
+                
+                # Shutdown generators and executors
+                try:
+                    loop.run_until_complete(loop.shutdown_asyncgens())
+                    loop.run_until_complete(loop.shutdown_default_executor())
+                except Exception:
+                    pass  # Ignore shutdown errors
+                
+                # Close the loop
+                loop.close()
+                
+        except Exception:
+            # Force close on any error
+            try:
+                if not loop.is_closed():
+                    loop.close()
+            except Exception:
+                pass
+    
+    # Suppress any remaining stderr output from background tasks
+    import time
+    import contextlib
+    
+    # Give background tasks a moment to finish and suppress their output
+    with contextlib.redirect_stderr(open(os.devnull, 'w')):
+        time.sleep(0.2)
+
+
+def run_query_mode(kb_name: str, query_text: str):
+    """Runs a single query against the specified knowledge base (CLI mode)."""
+    logger.info(f"Running query against KB '{kb_name}': {query_text}")
+    
+    try:
+        execute_query(kb_name, query_text)  # No async_task_runner = use CLI mode
+    except Exception:
+        sys.exit(1)
+
 def main():
     """Main entry point for the application."""
     parser = argparse.ArgumentParser(description="Knowledge Base MCP Server and Management Shell")
@@ -67,6 +185,12 @@ def main():
     # Shell command
     parser_shell = subparsers.add_parser("shell", help="Run the interactive management shell")
     parser_shell.set_defaults(func=run_shell_mode)
+    
+    # Query command
+    parser_query = subparsers.add_parser("query", help="Query a knowledge base")
+    parser_query.add_argument("kb_name", help="Name of the knowledge base to query")
+    parser_query.add_argument("query_text", help="Query text to search for")
+    parser_query.set_defaults(func=lambda: run_query_mode(args.kb_name, args.query_text))
 
     args = parser.parse_args()
 

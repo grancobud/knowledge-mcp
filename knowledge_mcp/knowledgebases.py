@@ -12,19 +12,27 @@ from knowledge_mcp.config import Config # Import Config
 logger = logging.getLogger(__name__)
 
 # Default query parameters for a new/unconfigured knowledge base config.yaml
-# Based on the subset specified in Task 12
+# Updated for lightrag-hku 1.4.0 QueryParam structure
 DEFAULT_QUERY_PARAMS: dict[str, Any] = {
     "description": "A useful knowledge base", # Add description field
-    "mode": "hybrid",
+    "mode": "hybrid",  # Keeping hybrid as preferred default
     "only_need_context": False,
     "only_need_prompt": False,
     "response_type": "Multiple Paragraphs",
+    "stream": False,  # New parameter in 1.4.0
     "top_k": 40,
-    "max_token_for_text_unit": 4000,
-    "max_token_for_global_context": 4000,
-    "max_token_for_local_context": 4000,
+    "chunk_top_k": None,  # New parameter - defaults to top_k if None
+    "max_entity_tokens": 4000,  # Replaces max_token_for_text_unit
+    "max_relation_tokens": 4000,  # Replaces max_token_for_global_context
+    "max_total_tokens": 8000,  # Replaces max_token_for_local_context
+    "hl_keywords": [],  # New parameter - high-level keywords
+    "ll_keywords": [],  # New parameter - low-level keywords
+    "conversation_history": [],  # New parameter - conversation history
     "history_turns": 3,
-    "user_prompt": "", # User-configurable prompt for LLM response formatting
+    "ids": None,  # New parameter - list of IDs to filter results
+    "model_func": None,  # New parameter - optional LLM model function override
+    "user_prompt": "",  # User-configurable prompt for LLM response formatting
+    "enable_rerank": True,  # New parameter - enable reranking for text chunks
 }
 
 class KnowledgeBaseError(Exception):
@@ -196,6 +204,44 @@ class KnowledgeBaseManager:
         # ... further implementation needed with RagManager ...
 
     # Add query_kb etc. later, likely involving RagManager
+    
+    def migrate_all_configs(self) -> dict[str, bool]:
+        """Migrates all knowledge base config files to lightrag-hku 1.4.0 format.
+        
+        Returns:
+            Dictionary mapping KB names to migration status (True if migrated, False if not needed)
+        """
+        migration_results = {}
+        
+        if not self.base_dir.exists():
+            logger.info("No knowledge base directory found, no migration needed")
+            return migration_results
+            
+        logger.info(f"Scanning for knowledge bases to migrate in {self.base_dir}")
+        
+        for kb_path in self.base_dir.iterdir():
+            if kb_path.is_dir():
+                kb_name = kb_path.name
+                logger.info(f"Checking KB '{kb_name}' for migration...")
+                
+                try:
+                    migrated = migrate_config_file(kb_path)
+                    migration_results[kb_name] = migrated
+                    
+                    if migrated:
+                        logger.info(f"✅ Migrated KB '{kb_name}'")
+                    else:
+                        logger.info(f"ℹ️  KB '{kb_name}' - no migration needed")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Failed to migrate KB '{kb_name}': {e}")
+                    migration_results[kb_name] = False
+                    
+        total_migrated = sum(1 for migrated in migration_results.values() if migrated)
+        total_checked = len(migration_results)
+        
+        logger.info(f"Migration complete: {total_migrated}/{total_checked} knowledge bases migrated")
+        return migration_results
 
 
 def load_kb_query_config(kb_path: Path) -> dict[str, Any]:
@@ -211,6 +257,10 @@ def load_kb_query_config(kb_path: Path) -> dict[str, Any]:
     config_file_path = kb_path / "config.yaml"
     kb_name = kb_path.name
     kb_logger = logging.getLogger(f"kbmcp.{kb_name}")  # KB-specific logger for user_prompt messages
+    
+    # Attempt migration before loading config
+    migrate_config_file(kb_path)
+    
     loaded_config: dict[str, Any] = {}
 
     if config_file_path.is_file():
@@ -273,3 +323,84 @@ def load_kb_query_config(kb_path: Path) -> dict[str, Any]:
 
     logger.debug(f"Final query config for KB '{kb_name}': {final_config}")
     return final_config
+
+
+def migrate_config_file(kb_path: Path) -> bool:
+    """Migrates a config.yaml file from old parameter names to new ones.
+    
+    Args:
+        kb_path: The path to the knowledge base's root directory.
+        
+    Returns:
+        True if migration was performed, False if no migration was needed.
+    """
+    config_file_path = kb_path / "config.yaml"
+    kb_name = kb_path.name
+    kb_logger = logging.getLogger(f"kbmcp.{kb_name}")
+    
+    if not config_file_path.is_file():
+        logger.debug(f"No config file to migrate for KB '{kb_name}'")
+        return False
+    
+    # Parameter mapping from old names to new names
+    PARAMETER_MIGRATION_MAP = {
+        "max_token_for_text_unit": "max_entity_tokens",
+        "max_token_for_global_context": "max_relation_tokens", 
+        "max_token_for_local_context": "max_total_tokens"
+    }
+    
+    try:
+        # Read current config
+        with open(config_file_path, 'r', encoding='utf-8') as f:
+            config_data = yaml.safe_load(f)
+            
+        if not isinstance(config_data, dict):
+            logger.debug(f"Config file for KB '{kb_name}' is not a dictionary, skipping migration")
+            return False
+            
+        # Check if any old parameters exist
+        old_params_found = []
+        for old_param in PARAMETER_MIGRATION_MAP.keys():
+            if old_param in config_data:
+                old_params_found.append(old_param)
+                
+        if not old_params_found:
+            logger.debug(f"No old parameters found in KB '{kb_name}' config, migration not needed")
+            return False
+            
+        # Perform migration
+        kb_logger.info("Migrating config file to lightrag-hku 1.4.0 format...")
+        kb_logger.info(f"Found old parameters: {old_params_found}")
+        
+        migrated_config = config_data.copy()
+        
+        for old_param, new_param in PARAMETER_MIGRATION_MAP.items():
+            if old_param in migrated_config:
+                # Copy value to new parameter name
+                migrated_config[new_param] = migrated_config[old_param]
+                # Remove old parameter
+                del migrated_config[old_param]
+                kb_logger.info(f"Migrated '{old_param}' -> '{new_param}' (value: {migrated_config[new_param]})")
+                
+        # Create backup of original file
+        backup_path = config_file_path.with_suffix('.yaml.backup')
+        with open(backup_path, 'w', encoding='utf-8') as f:
+            yaml.dump(config_data, f, default_flow_style=False)
+        kb_logger.info(f"Created backup at {backup_path}")
+        
+        # Write migrated config
+        with open(config_file_path, 'w', encoding='utf-8') as f:
+            yaml.dump(migrated_config, f, default_flow_style=False)
+            
+        kb_logger.info(f"Successfully migrated config file for KB '{kb_name}'")
+        return True
+        
+    except yaml.YAMLError as e:
+        logger.error(f"Error parsing YAML file {config_file_path} during migration: {e}")
+        return False
+    except OSError as e:
+        logger.error(f"Error reading/writing config file {config_file_path} during migration: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error during migration of {config_file_path}: {e}", exc_info=True)
+        return False

@@ -160,18 +160,13 @@ Add a `user_prompt` field to your knowledge base's `config.yaml`. The prompt sup
 # In <base_dir>/<kb_name>/config.yaml
 description: "Technical documentation KB"
 mode: "hybrid"
-top_k: 40
+top_k: 30
+max_entity_tokens: 2000
+max_relation_tokens: 3000
+max_total_tokens: 6000
+response_type: "Multiple Paragraphs"
 user_prompt: |
-  Please format your response as follows:
-  
-  ## Summary
-  Provide a brief 2-3 sentence summary of the key points.
-  
-  ## Detailed Answer
-  Give a comprehensive explanation with specific details.
-  
-  ## Key Takeaways
-  - List 3-5 bullet points with the most important insights
+  Please provide a comprehensive analysis with citations.
   - Focus on actionable information
   
   Keep your response clear, concise, and well-organized.

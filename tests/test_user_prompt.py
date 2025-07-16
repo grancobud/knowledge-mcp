@@ -91,7 +91,7 @@ def test_default_parameters():
     
     print(f"DEFAULT_QUERY_PARAMS: {DEFAULT_QUERY_PARAMS}")
     
-    # Verify the default parameter changes from Task 1.0
+    # Verify the default parameter changes for lightrag-hku 1.4.0
     assert DEFAULT_QUERY_PARAMS['mode'] == 'hybrid', f"Default mode should be 'hybrid', got: {DEFAULT_QUERY_PARAMS['mode']}"
     assert DEFAULT_QUERY_PARAMS['top_k'] == 40, f"Default top_k should be 40, got: {DEFAULT_QUERY_PARAMS['top_k']}"
     assert DEFAULT_QUERY_PARAMS['user_prompt'] == '', f"Default user_prompt should be empty string, got: {DEFAULT_QUERY_PARAMS['user_prompt']}"

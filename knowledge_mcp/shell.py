@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class Shell(cmd.Cmd):
     """Interactive shell for Knowledge MCP."""
-    intro = 'Welcome to the Knowledge MCP 0.3.2 shell. Type help or ? to list commands.\n'
+    intro = 'Welcome to the Knowledge MCP 0.3.3 shell. Type help or ? to list commands.\n'
     prompt = '(kbmcp) '
 
     def __init__(self, kb_manager: KnowledgeBaseManager, rag_manager: RagManager, stdout=None):
@@ -369,6 +369,8 @@ class Shell(cmd.Cmd):
 
     def do_query(self, arg: str) -> None:
         """Queries a specified knowledge base. Usage: query <kb_name> <query_text>"""
+        from knowledge_mcp.cli import execute_query
+        
         args = arg.split(maxsplit=1)
         if len(args) < 2:
             print("Usage: query <kb_name> <query_text>", file=self.stdout)
@@ -377,23 +379,19 @@ class Shell(cmd.Cmd):
         kb_name = args[0]
         query_text = args[1]
 
-        print(f"\nQuerying KB '{kb_name}' with: \"{query_text}\"", file=self.stdout)
-        print(" [running query] ...", end="", flush=True, file=self.stdout)
-
         try:
-            # Call the synchronous query method directly, passing kwargs
-            result = self._run_async_task(self.rag_manager.query(kb_name, query_text))
-            print(" [done]", file=self.stdout) # Indicate completion
-            print("\n--- Query Result ---", file=self.stdout)
-            print(result, file=self.stdout) # result should already be a string or printable
-            print("--- End Result ---", file=self.stdout)
+            # Use the shared query function from CLI with shell-specific parameters
+            execute_query(
+                kb_name=kb_name,
+                query_text=query_text,
+                rag_manager=self.rag_manager,
+                output_file=self.stdout,
+                async_task_runner=self._run_async_task  # Use shell's async task runner
+            )
         except (KnowledgeBaseNotFoundError, RAGInitializationError, ConfigurationError, RAGManagerError) as e:
             # Catch specific known errors from RagManager
-            print("\n [failed]", file=self.stdout)
-            print(f"\nError querying KB '{kb_name}': {e}", file=self.stdout)
             logger.error(f"Query failed for {kb_name}: {e}") # Log specific known errors
         except Exception as e: # Catch any other unexpected errors
-            print("\n [failed]", file=self.stdout)
             print(f"An unexpected error occurred during the query: {e}", file=self.stdout)
             logger.exception("Unexpected query error") # Log full traceback for unknowns
 
