@@ -4,7 +4,6 @@ import logging
 import logging.config
 import sys
 import warnings
-import os
 
 # Updated relative imports
 from knowledge_mcp.config import Config
@@ -19,6 +18,17 @@ def initialize_components(config: Config) -> tuple[KnowledgeBaseManager, RagMana
     """Initialize and return manager instances."""
     logger.info("Initializing components...")
     kb_manager = KnowledgeBaseManager(config)
+    
+    # Migrate existing knowledge base config files to new format
+    logger.info("Checking for knowledge base config migrations...")
+    migration_results = kb_manager.migrate_all_configs()
+    if migration_results:
+        migrated_count = sum(1 for migrated in migration_results.values() if migrated)
+        if migrated_count > 0:
+            logger.info(f"Successfully migrated {migrated_count} knowledge base config file(s)")
+        else:
+            logger.info("All knowledge base config files are up to date")
+    
     rag_manager = RagManager(config, kb_manager)
     logger.info("Components initialized.")
     return kb_manager, rag_manager
@@ -83,12 +93,41 @@ def execute_query(kb_name: str, query_text: str, rag_manager=None, output_file=N
             # For shell - use the provided async task runner
             result = async_task_runner(rag_manager.query(kb_name, query_text))
         else:
-            # For CLI - create and manage our own event loop
+            # For CLI - create and manage our own event loop with aggressive cleanup
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            
+            # Set a custom exception handler to suppress background task warnings
+            def exception_handler(loop, context):
+                # Suppress specific LightRAG background task errors
+                exception = context.get('exception')
+                if isinstance(exception, RuntimeError) and 'Event loop is closed' in str(exception):
+                    return  # Ignore these errors
+                if isinstance(exception, RuntimeError) and 'no running event loop' in str(exception):
+                    return  # Ignore these errors
+                # Log other exceptions normally
+                logger.debug(f"Async exception: {context}")
+            
+            loop.set_exception_handler(exception_handler)
+            
             try:
                 result = loop.run_until_complete(rag_manager.query(kb_name, query_text))
+                
+            except Exception as e:
+                # Force cleanup of RAG instance on error to prevent background tasks
+                logger.debug("Cleaning up RAG instance after query error")
+                if hasattr(rag_manager, '_rag_instances') and kb_name in rag_manager._rag_instances:
+                    del rag_manager._rag_instances[kb_name]
+                    logger.debug(f"Removed cached RAG instance for {kb_name} due to error")
+                raise  # Re-raise the exception
+                
             finally:
+                # Always cleanup RAG instance after query to prevent background tasks
+                logger.debug("Final cleanup of RAG instance")
+                if hasattr(rag_manager, '_rag_instances') and kb_name in rag_manager._rag_instances:
+                    del rag_manager._rag_instances[kb_name]
+                    logger.debug(f"Final removal of cached RAG instance for {kb_name}")
+                    
                 _cleanup_event_loop(loop)
         
         print(" [done]", file=output_file)
@@ -111,36 +150,51 @@ def _cleanup_event_loop(loop):
             # Suppress warnings during cleanup
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
+                warnings.simplefilter("ignore", DeprecationWarning)
+                
+                # Get all pending tasks
+                pending = asyncio.all_tasks(loop)
+                logger.debug(f"Found {len(pending)} pending tasks to cleanup")
                 
                 # Cancel all pending tasks
-                pending = asyncio.all_tasks(loop)
                 for task in pending:
                     if not task.done():
                         task.cancel()
+                        logger.debug(f"Cancelled task: {task}")
                 
-                # Give tasks a moment to cancel
+                # Give tasks time to cancel gracefully
                 if pending:
                     try:
+                        # Wait for cancellation with a longer timeout for LightRAG tasks
                         loop.run_until_complete(
                             asyncio.wait_for(
                                 asyncio.gather(*pending, return_exceptions=True),
-                                timeout=1.0
+                                timeout=2.0  # Increased timeout for LightRAG cleanup
                             )
                         )
-                    except (asyncio.TimeoutError, Exception):
-                        pass  # Ignore cleanup errors
+                    except (asyncio.TimeoutError, asyncio.CancelledError, Exception) as e:
+                        logger.debug(f"Task cleanup timeout or error (expected): {e}")
+                        pass  # Expected for cancelled tasks
                 
-                # Shutdown generators and executors
+                # Shutdown async generators and executors
                 try:
                     loop.run_until_complete(loop.shutdown_asyncgens())
+                except Exception as e:
+                    logger.debug(f"Error shutting down async generators: {e}")
+                    pass
+                    
+                try:
                     loop.run_until_complete(loop.shutdown_default_executor())
-                except Exception:
-                    pass  # Ignore shutdown errors
+                except Exception as e:
+                    logger.debug(f"Error shutting down default executor: {e}")
+                    pass
                 
                 # Close the loop
                 loop.close()
+                logger.debug("Event loop closed successfully")
                 
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Error during event loop cleanup: {e}")
             # Force close on any error
             try:
                 if not loop.is_closed():
@@ -148,13 +202,52 @@ def _cleanup_event_loop(loop):
             except Exception:
                 pass
     
-    # Suppress any remaining stderr output from background tasks
-    import time
-    import contextlib
+    # Clear the event loop policy to prevent issues with background tasks
+    try:
+        asyncio.set_event_loop(None)
+    except Exception:
+        pass
     
-    # Give background tasks a moment to finish and suppress their output
-    with contextlib.redirect_stderr(open(os.devnull, 'w')):
-        time.sleep(0.2)
+    # Comprehensive stderr suppression for LightRAG background tasks
+    import time
+    import threading
+    import sys
+    import os as os_module
+    
+    # Additional global suppression of asyncio warnings
+    warnings.filterwarnings('ignore', category=RuntimeWarning, module='asyncio')
+    warnings.filterwarnings('ignore', message='.*Event loop is closed.*')
+    warnings.filterwarnings('ignore', message='.*no running event loop.*')
+    
+    # OS-level stderr suppression for background tasks
+    def comprehensive_suppression():
+        # Save original stderr
+        original_stderr = sys.stderr
+        original_stderr_fd = os_module.dup(2)  # Duplicate stderr file descriptor
+        
+        try:
+            # Redirect stderr to devnull at both Python and OS level
+            devnull = open(os_module.devnull, 'w')
+            sys.stderr = devnull
+            os_module.dup2(devnull.fileno(), 2)  # Redirect OS-level stderr
+            
+            # Give background tasks time to finish
+            time.sleep(0.8)  # Longer wait for complete cleanup
+            
+        finally:
+            # Restore stderr
+            try:
+                os_module.dup2(original_stderr_fd, 2)  # Restore OS-level stderr
+                sys.stderr = original_stderr
+                os_module.close(original_stderr_fd)
+                devnull.close()
+            except Exception:
+                pass  # Ignore restoration errors
+    
+    # Run comprehensive suppression in background thread
+    suppression_thread = threading.Thread(target=comprehensive_suppression, daemon=True)
+    suppression_thread.start()
+    suppression_thread.join(timeout=1.5)  # Wait a bit longer
 
 
 def run_query_mode(kb_name: str, query_text: str):
