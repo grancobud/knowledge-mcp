@@ -1,0 +1,32 @@
+knowledge_base:
+  base_dir: ./kbs
+
+lightrag:
+  llm:
+    provider: "openai"
+    model_name: "gpt-4.1-mini"
+    max_token_size: 32768
+    api_key: "${OPENAI_API_KEY}"
+    api_base: "${OPENAI_API_BASE}"
+    kwargs:
+      temperature: 0.0
+      top_p: 0.9
+  embedding:
+    provider: "openai"
+    model_name: "text-embedding-3-large"
+    api_key: "${OPENAI_API_KEY}"
+    api_base: "${OPENAI_API_BASE}"
+    embedding_dim: 3072
+    max_token_size: 8192
+  embedding_cache:
+    enabled: true
+    similarity_threshold: 0.90
+
+logging:
+  level: "INFO"
+  max_bytes: 10485760
+  backup_count: 5
+  detailed_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  default_format: "%(levelname)s: %(message)s"
+
+env_file: .env
